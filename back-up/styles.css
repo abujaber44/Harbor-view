@@ -1,0 +1,24 @@
+table {
+  border-collapse: collapse;
+  width: 100%;
+  page-break-inside:auto
+}
+
+td {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+
+tr {
+  background-color: #f2f2f2;
+  width: 30%;
+  float: left;
+  text-align: center;
+  font-size: 25px;
+  border: 1px solid black;
+  page-break-inside:avoid; 
+  page-break-after:auto
+}
+
