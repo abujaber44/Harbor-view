@@ -18,5 +18,5 @@ tr {
     font-size: 20px;
     border: 1px solid black;
     page-break-inside: avoid;
-    page-break-after: auto;
+    page-break-after: avoid;
 }

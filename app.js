@@ -26,7 +26,11 @@ app.post('/upload', upload.single('excel'), function(req, res) {
 });
 
 app.get('/', function(req, res) {
-    res.send("done")
+    let filePath = "output.xlsx"
+    const workbook = xlsx.readFile(filePath);
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const data = xlsx.utils.sheet_to_json(sheet);
+    res.send(data);
 });
 
 app.listen(3004, function() {
