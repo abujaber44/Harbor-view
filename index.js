@@ -19,39 +19,47 @@ document.getElementById('form').addEventListener('submit', e => {
                     };
                 }
                 groupedData[item.Driver].TotalAmount += (item.Amount + (item.Adj || 0));
-                groupedData[item.Driver].Pay.push({ Date: item.Day, Amount: item.Amount, Ded: item.Adj || 0, Notes: item.Notes || "" });
+                groupedData[item.Driver].Pay.push({ Date: item.Day, Amount: item.Amount, Deductions: item.Adj || 0, Notes: item.Notes || "" });
             });
-            console.log(groupedData)
 
             const driverDataElement = document.getElementById('table');
+            driverDataElement.innerHTML = ''; // Clear previous content
+
             for (const driver in groupedData) {
-                const row = document.createElement('tr');
+                const entryDiv = document.createElement('div');
+                entryDiv.classList.add('entry');
 
-                const cellDriver = document.createElement('td');
-                cellDriver.textContent = groupedData[driver].Name;
-                cellDriver.style.fontWeight = 'bold';
-                cellDriver.style.paddingBottom = '15px';
-                cellDriver.style.paddingTop = '15px'
+                const header = document.createElement('h2');
+                header.textContent = groupedData[driver].Name;
+                entryDiv.appendChild(header);
 
-                const cellTotalAmount = document.createElement('td');
-                cellTotalAmount.textContent = "Total: $" + groupedData[driver].TotalAmount;
-                cellTotalAmount.style.paddingBottom = '15px'
-                cellTotalAmount.style.paddingTop = '15px'
-                cellTotalAmount.style.fontWeight = 'bold';
+                const totalAmount = document.createElement('p');
+                totalAmount.classList.add('total-amount');
+                totalAmount.textContent = "Total Amount: $" + groupedData[driver].TotalAmount;
+                entryDiv.appendChild(totalAmount);
 
-                const cellPayDetails = document.createElement('td');
-                cellPayDetails.innerHTML = groupedData[driver].Pay.map(pay => {
-                    if (pay.Ded !== 0) {
-                        return `Date ${pay.Date}: $${pay.Amount} &nbsp Deducted -$${(pay.Ded)*-1} &nbsp ${pay.Notes}`;
-                    } else {
-                        return `Date ${pay.Date}: $${pay.Amount}`;
-                    }
-                }).join('<br>');
+                const table = document.createElement('table');
 
-                row.appendChild(cellDriver);
-                row.appendChild(cellPayDetails);
-                row.appendChild(cellTotalAmount);
-                driverDataElement.appendChild(row);
+                const headerRow = document.createElement('tr');
+                ['Date', 'Amount', 'Deductions', 'Notes'].forEach(text => {
+                    const th = document.createElement('th');
+                    th.textContent = text;
+                    headerRow.appendChild(th);
+                });
+                table.appendChild(headerRow);
+
+                groupedData[driver].Pay.forEach(pay => {
+                    const row = document.createElement('tr');
+                    ['Date', 'Amount', 'Deductions', 'Notes'].forEach(key => {
+                        const td = document.createElement('td');
+                        td.textContent = (key === 'Deductions' && pay[key] === 0) ? '-' : pay[key];
+                        row.appendChild(td);
+                    });
+                    table.appendChild(row);
+                });
+
+                entryDiv.appendChild(table);
+                driverDataElement.appendChild(entryDiv);
             }
         })
         .catch(error => {
