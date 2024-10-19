@@ -5,8 +5,53 @@ from datetime import datetime
 from collections import defaultdict
 import webbrowser
 import os
+import sys
+import json
+import requests
 
 
+def process_days(from_day, to_day):
+    # Sample processing: Just return the values received in a formatted string.
+    print (f"You selected from {from_day} to {to_day}")
+    global sheets_to_process  # Declare it as global 
+
+    day_to_sheets = {
+    "Monday": ["Mon AM", "Mon PM"],
+    "Tuesday": ["Tues AM", "Tues PM"],
+    "Wednesday": ["Wed AM", "Wed PM"],
+    "Thursday": ["Thurs AM", "Thurs PM"],
+    "Friday": ["Fri AM", "Fri PM"],
+    "Sarurday": ["Sat AM", "Sat PM"],
+    "Sunday": ["Sun AM", "Sun PM"] 
+    }
+
+    days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Sarurday", "Sunday"]
+
+    # Get the indices of from_day and to_day
+    try:
+        start_index = days_of_week.index(from_day)
+        end_index = days_of_week.index(to_day)
+    except ValueError:
+        print("Invalid day range provided.")
+        exit()
+
+    # Get the list of sheets to process based on the day range
+    sheets_to_process = []
+    for day in days_of_week[start_index:end_index + 1]:
+        sheets_to_process.extend(day_to_sheets[day])
+
+if __name__ == "__main__":
+    # Receive JSON data from stdin
+    input_data = sys.stdin.read()
+    data = json.loads(input_data)
+    
+    from_day = data['fromDay']
+    to_day = data['toDay']
+    
+    # Process the data
+    process_days(from_day, to_day)
+
+  
 
 # Load the workbook
 wb = openpyxl.load_workbook('Daily Sheet.xlsx', data_only=True)
@@ -14,8 +59,11 @@ wb = openpyxl.load_workbook('Daily Sheet.xlsx', data_only=True)
 # Create an empty list to store the results
 results = []
 
-# Iterate through the first 14 sheets
-for sheet in wb.worksheets[:14]:
+# Process each sheet in the list of sheets to process
+for sheet_name in sheets_to_process:
+    # Access the sheet by name directly
+    sheet = wb[sheet_name]
+
     # Get the result of the formula in B1
     day = sheet['B1'].value
     #print (day, type(day))
@@ -95,15 +143,48 @@ workbook.save('output.xlsx')
 
 print('Output has been saved')
 
+# filename = 'file:///'+os.getcwd()+'/' + 'index.html'
+
+# print('New Chrome tab...')
+
+# webbrowser.open_new_tab(filename)
+
+# print('Starting express server...')
+
+# subprocess.run(["node", "app.js"])
+
+
+
+# def upload_file():
+#     # Define the URL of your Express server's /upload route
+#     upload_url = 'http://localhost:3004/upload'
+
+#     # Define the path to the output file you want to upload
+#     file_path = 'output.xlsx'
+
+#     # Open the file in binary mode and send it in a POST request
+#     with open(file_path, 'rb') as f:
+#         files = {'excel': f}  # The form field name in your express route is 'excel'
+#         try:
+#             response = requests.post(upload_url, files=files)
+#             if response.status_code == 200:
+#                 print('File uploaded successfully!')
+#                 print('Response data:', response.json())  # Assuming the response is in JSON
+#             else:
+#                 print(f"Failed to upload file. Status code: {response.status_code}")
+#                 print("Response:", response.text)
+#         except Exception as e:
+#             print(f"An error occurred while uploading the file: {e}")
+
+# # After generating the output.xlsx file, call the upload_file function
+# if __name__ == "__main__":
+#     # Your existing logic to process the sheets and save output.xlsx
+    
+#     # Call upload_file to send the generated file to the Express server
+#     upload_file()
+
 filename = 'file:///'+os.getcwd()+'/' + 'index.html'
 
 print('New Chrome tab...')
 
 webbrowser.open_new_tab(filename)
-
-print('Starting express server...')
-
-subprocess.run(["node", "app.js"])
-
-
-
