@@ -34,13 +34,13 @@ app.post('/upload', upload.single('excel'), function(req, res) {
 });
 
 
-app.get('/uploaded-data', (req, res) => {
-  if (processedData.length === 0) {
-      return res.status(400).send('No data has been processed yet.');
-  }
+// app.get('/uploaded-data', (req, res) => {
+//   if (processedData.length === 0) {
+//       return res.status(400).send('No data has been processed yet.');
+//   }
 
-  res.json(processedData);  // Send the processed data back to the front-end
-});
+//   res.sendFile(path.join(__dirname,'index.html'));  // Send the processed data back to the front-end
+// });
 
 
 // Handle form submission and pass data to Python script
