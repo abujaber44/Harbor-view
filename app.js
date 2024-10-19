@@ -30,7 +30,6 @@ app.post('/upload', upload.single('excel'), function(req, res) {
     var workbook = xlsx.readFile(req.file.path);
     var sheet = workbook.Sheets[workbook.SheetNames[0]];
     processedData = xlsx.utils.sheet_to_json(sheet);
-    console.log(processedData)
     res.send(processedData); // Send the processed data
 });
 
@@ -69,7 +68,6 @@ app.post('/submit', (req, res) => {
   });
 
 app.get('/', (req, res) => {
-  console.log(path)
     res.sendFile(path.join(__dirname, 'public', 'index-1.html'));
   });
 

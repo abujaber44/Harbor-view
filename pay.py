@@ -12,7 +12,7 @@ import requests
 
 def process_days(from_day, to_day):
     # Sample processing: Just return the values received in a formatted string.
-    print (f"You selected from {from_day} to {to_day}")
+    print (f"**You selected {from_day} to {to_day}**")
     global sheets_to_process  # Declare it as global 
 
     day_to_sheets = {
@@ -141,7 +141,7 @@ for row in worksheet.iter_rows(min_row=2, max_col=1):
 # Save the changes to the same file
 workbook.save('output.xlsx')
 
-print('Output has been saved')
+print('Output file has been saved**')
 
 # filename = 'file:///'+os.getcwd()+'/' + 'index.html'
 
@@ -185,6 +185,6 @@ print('Output has been saved')
 
 filename = 'file:///'+os.getcwd()+'/' + 'index.html'
 
-print('New Chrome tab...')
+print('Please upload file output.xlsx')
 
 webbrowser.open_new_tab(filename)
