@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zelle Drivers | Harbor View Payroll</title>
+  <link rel="stylesheet" href="/styles.css?v=20260330d" />
+</head>
+<body>
+  <main class="page">
+    <section class="panel panel-hero">
+      <h1>Zelle Drivers</h1>
+      <p class="subtext">Add one driver name per line. These drivers will be sorted first on the sorted pay page.</p>
+      <div class="page-links">
+        <a class="link-chip" href="/">Back To Payroll</a>
+        <a class="link-chip" href="/sorted-pay">View Sorted Driver Pay</a>
+      </div>
+
+      <form id="zelle-form" class="stack-form">
+        <label for="zelle-drivers-input">Driver Names (one per line)</label>
+        <textarea id="zelle-drivers-input" rows="14" placeholder="Driver One&#10;Driver Two"></textarea>
+        <div class="action-row">
+          <button id="save-zelle-btn" type="submit">Save Zelle Drivers</button>
+        </div>
+      </form>
+
+      <div id="zelle-status" class="status" role="status" aria-live="polite">Loading saved drivers...</div>
+    </section>
+  </main>
+
+  <script src="/zelle.js?v=20260330d"></script>
+</body>
+</html>

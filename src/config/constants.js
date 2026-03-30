@@ -24,6 +24,7 @@ const APP_CONFIG = Object.freeze({
   pythonScriptPath: path.join(REPO_ROOT, 'pay.py'),
   workbookPath: process.env.PAYROLL_WORKBOOK_PATH || path.join(REPO_ROOT, 'Daily Sheet.xlsx'),
   outputPath: process.env.PAYROLL_OUTPUT_PATH || path.join(REPO_ROOT, 'output.xlsx'),
+  zelleDriversPath: process.env.PAYROLL_ZELLE_DRIVERS_PATH || path.join(REPO_ROOT, 'zelle-drivers.json'),
   maxWorkbookBytes: Number(process.env.PAYROLL_MAX_WORKBOOK_BYTES || 25 * 1024 * 1024),
   pythonTimeoutMs: Number(process.env.PAYROLL_PYTHON_TIMEOUT_MS || 120000)
 });

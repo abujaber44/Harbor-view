@@ -2,6 +2,8 @@ const path = require('path');
 const express = require('express');
 const { DAY_ORDER } = require('./config/constants');
 const { createSubmitHandler } = require('./routes/submitRoute');
+const { createZelleListHandler, createZelleSaveHandler } = require('./routes/zelleRoute');
+const { createSortedPayHandler } = require('./routes/sortedPayRoute');
 
 function createApp({ runtime }) {
   const app = express();
@@ -19,9 +21,20 @@ function createApp({ runtime }) {
   });
 
   app.post('/submit', createSubmitHandler({ runtime }));
+  app.get('/api/zelle-drivers', createZelleListHandler());
+  app.post('/api/zelle-drivers', createZelleSaveHandler());
+  app.get('/api/sorted-driver-pay', createSortedPayHandler());
 
   app.get('/', (_req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+  });
+
+  app.get('/zelle', (_req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'zelle.html'));
+  });
+
+  app.get('/sorted-pay', (_req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'sorted-pay.html'));
   });
 
   return app;

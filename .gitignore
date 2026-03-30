@@ -23,7 +23,9 @@ __pycache__/
 
 # Generated app artifacts
 Daily Sheet.xlsx
+~$*.xlsx
 output.xlsx
+zelle-drivers.json
 uploads/*
 !uploads/.gitkeep
 
