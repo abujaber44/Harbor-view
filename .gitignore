@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+
+# Node.js
+node_modules/
+.npm-cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Environment files
+.env
+.env.*
+
+# Generated app artifacts
+Daily Sheet.xlsx
+output.xlsx
+uploads/*
+!uploads/.gitkeep
+
+# Logs and temp
+*.log
+*.tmp
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
