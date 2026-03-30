@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Driver NTD Summary | Harbor View Payroll</title>
+  <link rel="stylesheet" href="/styles.css?v=20260330d" />
+</head>
+<body>
+  <main class="page">
+    <section class="panel panel-hero">
+      <h1>Driver NTD Summary</h1>
+      <p class="subtext">Enter a driver name to summarize Column L (NTD) from Mon AM through Sun PM.</p>
+
+      <form id="ntd-form" class="form-grid">
+        <label>
+          Driver
+          <input id="driver-input" name="driver" type="text" placeholder="Enter driver name" required />
+        </label>
+        <div class="action-stack">
+          <button id="ntd-submit-btn" type="submit">Generate NTD Summary</button>
+        </div>
+      </form>
+
+      <div id="ntd-status" class="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="panel panel-table">
+      <h2>Summary</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Day</th>
+              <th>NTD</th>
+            </tr>
+          </thead>
+          <tbody id="ntd-body"></tbody>
+          <tfoot>
+            <tr>
+              <th>Total</th>
+              <th id="ntd-total">0.00</th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/driver-ntd-summary.js?v=20260330a"></script>
+</body>
+</html>
