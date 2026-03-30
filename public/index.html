@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harbor View Payroll</title>
+  <link rel="stylesheet" href="/styles.css?v=20260330b" />
+</head>
+<body>
+  <main class="page">
+    <section class="panel panel-hero">
+      <h1>Harbor View Payroll</h1>
+      <p class="subtext">Run payroll from <code>Daily Sheet.xlsx</code> and review grouped driver totals.</p>
+
+      <form id="payroll-form" class="form-grid">
+        <label>
+          From Day
+          <select name="fromDay" id="fromDay" required>
+            <option value="">Select a day</option>
+            <option value="Monday">Monday</option>
+            <option value="Tuesday">Tuesday</option>
+            <option value="Wednesday">Wednesday</option>
+            <option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option>
+            <option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
+          </select>
+        </label>
+
+        <label>
+          To Day
+          <select name="toDay" id="toDay" required>
+            <option value="">Select a day</option>
+            <option value="Monday">Monday</option>
+            <option value="Tuesday">Tuesday</option>
+            <option value="Wednesday">Wednesday</option>
+            <option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option>
+            <option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
+          </select>
+        </label>
+
+        <div class="action-stack">
+          <button id="submit-btn" type="submit">Run Payroll</button>
+          <button id="report-btn" type="button" class="secondary" disabled>Generate Report</button>
+        </div>
+      </form>
+
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <ul id="warnings" class="warnings"></ul>
+    </section>
+
+    <section class="panel panel-table">
+      <h2>Grouped Totals</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Driver</th>
+              <th>Total Amount</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="grouped-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel panel-table">
+      <h2>Extracted Rows</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Day</th>
+              <th>Driver</th>
+              <th>Amount</th>
+              <th>Adj</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="rows-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="report-preview" class="panel hidden">
+      <h2>Pay Slip Report</h2>
+      <p id="report-period" class="subtext"></p>
+      <div id="report-slips" class="report-grid"></div>
+    </section>
+  </main>
+
+  <script src="/app.js?v=20260330b"></script>
+</body>
+</html>

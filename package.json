@@ -1,8 +1,21 @@
 {
+  "name": "harbor-view-payroll",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local single-user payroll processing for Harbor View.",
+  "engines": {
+    "node": ">=20 <26"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node --watch app.js",
+    "check": "node scripts/check.js",
+    "test": "node scripts/test.js",
+    "test:node": "node --test test/node/*.test.js",
+    "test:python": "python3 -m unittest discover -s test/python -p test_*.py"
+  },
   "dependencies": {
-    "body-parser": "^1.20.3",
     "express": "^4.18.2",
-    "multer": "^1.4.5-lts.1",
     "xlsx": "^0.18.5"
   }
 }

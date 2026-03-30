@@ -1,190 +1,216 @@
-import openpyxl
-import pandas as pd
-import subprocess
-from datetime import datetime
-from collections import defaultdict
-import webbrowser
+import json
 import os
 import sys
-import json
-import requests
+from collections import defaultdict
+
+try:
+    import openpyxl
+except ModuleNotFoundError as exc:
+    print(
+        json.dumps(
+            {
+                "ok": False,
+                "code": "DEPENDENCY_MISSING",
+                "message": "Python package openpyxl is missing.",
+                "details": str(exc),
+            }
+        ),
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
-def process_days(from_day, to_day):
-    # Sample processing: Just return the values received in a formatted string.
-    print (f"**You selected {from_day} to {to_day}**")
-    global sheets_to_process  # Declare it as global 
+CONFIG = {
+    "day_to_sheets": {
+        "Monday": ["Mon AM", "Mon PM"],
+        "Tuesday": ["Tues AM", "Tues PM"],
+        "Wednesday": ["Wed AM", "Wed PM"],
+        "Thursday": ["Thurs AM", "Thurs PM"],
+        "Friday": ["Fri AM", "Fri PM"],
+        "Saturday": ["Sat AM", "Sat PM"],
+        "Sunday": ["Sun AM", "Sun PM"],
+    },
+    "day_order": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ],
+    "cells": {
+        "day_cell": "B1",
+        "min_row": 4,
+        "max_row": 47,
+        "driver_col": 3,
+        "amount_col": 13,
+        "adj_col": 14,
+        "notes_col": 15,
+    },
+    "output_headers": ["Day", "Driver", "Amount", "Adj", "Notes", "Driver2", "Sum"],
+}
 
-    day_to_sheets = {
-    "Monday": ["Mon AM", "Mon PM"],
-    "Tuesday": ["Tues AM", "Tues PM"],
-    "Wednesday": ["Wed AM", "Wed PM"],
-    "Thursday": ["Thurs AM", "Thurs PM"],
-    "Friday": ["Fri AM", "Fri PM"],
-    "Sarurday": ["Sat AM", "Sat PM"],
-    "Sunday": ["Sun AM", "Sun PM"] 
+
+class PayrollError(Exception):
+    def __init__(self, code, message, details=None):
+        self.code = code
+        self.message = message
+        self.details = details
+        super().__init__(message)
+
+
+def parse_payload(raw_payload):
+    try:
+        payload = json.loads(raw_payload or "{}")
+    except json.JSONDecodeError as exc:
+        raise PayrollError("INPUT_INVALID", "Invalid request payload.", str(exc))
+
+    from_day = payload.get("fromDay")
+    to_day = payload.get("toDay")
+
+    if not from_day or not to_day:
+        raise PayrollError("INPUT_INVALID", "Both fromDay and toDay are required.")
+
+    return from_day, to_day
+
+
+def build_sheets_to_process(from_day, to_day, config=CONFIG):
+    day_order = config["day_order"]
+    day_to_sheets = config["day_to_sheets"]
+
+    if from_day not in day_order or to_day not in day_order:
+        raise PayrollError("INPUT_INVALID", "Days must be valid weekday names.")
+
+    from_idx = day_order.index(from_day)
+    to_idx = day_order.index(to_day)
+
+    if from_idx > to_idx:
+        raise PayrollError("INPUT_INVALID", "fromDay must be earlier than or equal to toDay.")
+
+    sheet_names = []
+    for day in day_order[from_idx : to_idx + 1]:
+        sheet_names.extend(day_to_sheets[day])
+
+    return sheet_names
+
+
+def extract_rows(workbook_path, sheet_names, config=CONFIG):
+    try:
+        workbook = openpyxl.load_workbook(workbook_path, data_only=True)
+    except FileNotFoundError as exc:
+        raise PayrollError("WORKBOOK_MISSING", f"Workbook not found at {workbook_path}.", str(exc))
+    except OSError as exc:
+        raise PayrollError("PROCESS_FAILED", "Failed to open workbook.", str(exc))
+
+    records = []
+    cells = config["cells"]
+
+    for sheet_name in sheet_names:
+        if sheet_name not in workbook.sheetnames:
+            raise PayrollError("SHEET_NOT_FOUND", f"Worksheet '{sheet_name}' was not found.")
+
+        sheet = workbook[sheet_name]
+        day = sheet[cells["day_cell"]].value
+
+        for row_idx in range(cells["min_row"], cells["max_row"] + 1):
+            amount = sheet.cell(row=row_idx, column=cells["amount_col"]).value
+            if isinstance(amount, (int, float)) and amount < 0:
+                driver = sheet.cell(row=row_idx, column=cells["driver_col"]).value
+                adj = sheet.cell(row=row_idx, column=cells["adj_col"]).value
+                notes = sheet.cell(row=row_idx, column=cells["notes_col"]).value
+
+                records.append([
+                    day,
+                    driver,
+                    -1 * amount,
+                    adj if isinstance(adj, (int, float)) else 0,
+                    notes or "",
+                ])
+
+    return records
+
+
+def write_output(records, output_path, config=CONFIG):
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+
+    sheet.append(config["output_headers"])
+    for row in records:
+        sheet.append(row)
+
+    sums = defaultdict(float)
+    for record in records:
+        driver = record[1]
+        amount = record[2]
+        if driver is not None:
+            sums[driver] += amount
+
+    for row_idx, (driver, total) in enumerate(sums.items(), start=2):
+        sheet.cell(row=row_idx, column=6).value = driver
+        sheet.cell(row=row_idx, column=7).value = total
+
+    for row_idx in range(2, sheet.max_row + 1):
+        day_cell = sheet.cell(row=row_idx, column=1)
+        if day_cell.value is not None and not isinstance(day_cell.value, str) and hasattr(day_cell.value, "strftime"):
+            day_cell.value = day_cell.value.strftime("%m/%d")
+
+    workbook.save(output_path)
+
+
+def run(from_day, to_day, workbook_path, output_path):
+    sheet_names = build_sheets_to_process(from_day, to_day)
+    records = extract_rows(workbook_path, sheet_names)
+    write_output(records, output_path)
+
+    warnings = []
+    if not records:
+        warnings.append("No negative values were found for the selected range.")
+
+    return {
+        "ok": True,
+        "outputFile": os.path.basename(output_path),
+        "rowsWritten": len(records),
+        "warnings": warnings,
     }
 
-    days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Sarurday", "Sunday"]
 
-    # Get the indices of from_day and to_day
+def main():
+    workbook_path = os.getenv("PAYROLL_WORKBOOK", "Daily Sheet.xlsx")
+    output_path = os.getenv("PAYROLL_OUTPUT", "output.xlsx")
+
     try:
-        start_index = days_of_week.index(from_day)
-        end_index = days_of_week.index(to_day)
-    except ValueError:
-        print("Invalid day range provided.")
-        exit()
+        from_day, to_day = parse_payload(sys.stdin.read())
+        result = run(from_day, to_day, workbook_path, output_path)
+        print(json.dumps(result))
+        return 0
+    except PayrollError as exc:
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "code": exc.code,
+                    "message": exc.message,
+                    "details": exc.details,
+                }
+            ),
+            file=sys.stderr,
+        )
+        return 1
+    except Exception as exc:
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "code": "PROCESS_FAILED",
+                    "message": "Unexpected payroll processing error.",
+                    "details": str(exc),
+                }
+            ),
+            file=sys.stderr,
+        )
+        return 1
 
-    # Get the list of sheets to process based on the day range
-    sheets_to_process = []
-    for day in days_of_week[start_index:end_index + 1]:
-        sheets_to_process.extend(day_to_sheets[day])
 
 if __name__ == "__main__":
-    # Receive JSON data from stdin
-    input_data = sys.stdin.read()
-    data = json.loads(input_data)
-    
-    from_day = data['fromDay']
-    to_day = data['toDay']
-    
-    # Process the data
-    process_days(from_day, to_day)
-
-  
-
-# Load the workbook
-wb = openpyxl.load_workbook('Daily Sheet.xlsx', data_only=True)
-
-# Create an empty list to store the results
-results = []
-
-# Process each sheet in the list of sheets to process
-for sheet_name in sheets_to_process:
-    # Access the sheet by name directly
-    sheet = wb[sheet_name]
-
-    # Get the result of the formula in B1
-    day = sheet['B1'].value
-    #print (day, type(day))
-    
-    # Iterate through the cells in M4:M47
-    for row in sheet['M4:M47']:
-        for cell in row:
-            if cell.value is not None:
-                if isinstance(cell.value, int) and cell.value < 0:
-                    # Copy the values from columns C and M
-                    driver = sheet.cell(row=cell.row, column=3).value
-                    short = sheet.cell(row=cell.row, column=14).value
-                    notes = sheet.cell(row=cell.row, column=15).value
-                    # Append the results to the list
-                    results.append([day, driver, -1*(cell.value), short, notes])
-
-# Create a new workbook to store the results
-result_wb = openpyxl.Workbook()
-result_sheet = result_wb.active
-
-# Write the header row to the new sheet
-result_sheet.append(['Day', 'Driver', 'Amount', 'Adj', 'Notes', 'Driver2', 'Sum'])
-
-# Write the results to the new sheet
-for result in results:
-    result_sheet.append(result)
-
-
-
-# Save the result workbook
-result_wb.save('output.xlsx')
-
-# Load your Excel file
-workbook = openpyxl.load_workbook('output.xlsx')
-worksheet = workbook.active
-
-
-# Create a dictionary to store sums for each unique value in column B
-sums = defaultdict(int)
-
-# Iterate through the rows to calculate sums
-for row in worksheet.iter_rows(min_row=2, values_only=True):
-    value_in_column_B = row[1]  # Assuming column B is the second column (index 1)
-    value_in_column_C = row[2]  # Assuming column C is the third column (index 2)
-
-    # Add the value in column C to the corresponding sum in the dictionary
-    if value_in_column_B is not None:
-        sums[value_in_column_B] += value_in_column_C
-
-# Update the worksheet with the sums in columns E and F
-
-x = 2
-
-for key, values in sums.items():
-    restart = False 
-
-    for row in worksheet.iter_rows(min_row=x):
-        row[5].value = key
-        row[6].value = values
-        restart = True
-        break
-    
-    if restart:
-        x = x + 1
-        continue
-
-for row in worksheet.iter_rows(min_row=2, max_col=1):
-    for cell in row:
-        # Check if the cell is not empty
-        if cell.value is not None:
-            if type(cell.value) != str:
-                cell.value = cell.value.strftime("%m/%d")
-
-
-# Save the changes to the same file
-workbook.save('output.xlsx')
-
-print('Output file has been saved**')
-
-# filename = 'file:///'+os.getcwd()+'/' + 'index.html'
-
-# print('New Chrome tab...')
-
-# webbrowser.open_new_tab(filename)
-
-# print('Starting express server...')
-
-# subprocess.run(["node", "app.js"])
-
-
-
-# def upload_file():
-#     # Define the URL of your Express server's /upload route
-#     upload_url = 'http://localhost:3004/upload'
-
-#     # Define the path to the output file you want to upload
-#     file_path = 'output.xlsx'
-
-#     # Open the file in binary mode and send it in a POST request
-#     with open(file_path, 'rb') as f:
-#         files = {'excel': f}  # The form field name in your express route is 'excel'
-#         try:
-#             response = requests.post(upload_url, files=files)
-#             if response.status_code == 200:
-#                 print('File uploaded successfully!')
-#                 print('Response data:', response.json())  # Assuming the response is in JSON
-#             else:
-#                 print(f"Failed to upload file. Status code: {response.status_code}")
-#                 print("Response:", response.text)
-#         except Exception as e:
-#             print(f"An error occurred while uploading the file: {e}")
-
-# # After generating the output.xlsx file, call the upload_file function
-# if __name__ == "__main__":
-#     # Your existing logic to process the sheets and save output.xlsx
-    
-#     # Call upload_file to send the generated file to the Express server
-#     upload_file()
-
-filename = 'file:///'+os.getcwd()+'/' + 'index.html'
-
-print('Please upload file output.xlsx')
-
-webbrowser.open_new_tab(filename)
+    sys.exit(main())
