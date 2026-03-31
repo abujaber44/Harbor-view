@@ -1,5 +1,5 @@
 const { APP_CONFIG, ERROR_CODES } = require('../config/constants');
-const { summarizeDriverNtdByDay } = require('../services/driverNtdSummary');
+const { summarizeDriversNtdBalance } = require('../services/driverNtdSummary');
 
 function statusForCode(code) {
   if (code === ERROR_CODES.INPUT_INVALID) return 400;
@@ -10,7 +10,7 @@ function statusForCode(code) {
 function createDriverNtdSummaryHandler() {
   return function driverNtdSummaryHandler(req, res) {
     const driver = req.query?.driver;
-    const result = summarizeDriverNtdByDay({
+    const result = summarizeDriversNtdBalance({
       workbookPath: APP_CONFIG.workbookPath,
       driver
     });

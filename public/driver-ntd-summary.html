@@ -4,21 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Driver NTD Summary | Harbor View Payroll</title>
-  <link rel="stylesheet" href="/styles.css?v=20260330d" />
+  <link rel="stylesheet" href="/styles.css?v=20260330e" />
 </head>
 <body>
   <main class="page">
     <section class="panel panel-hero">
       <h1>Driver NTD Summary</h1>
-      <p class="subtext">Enter a driver name to summarize Column L (NTD) from Mon AM through Sun PM.</p>
+      <p class="subtext">Summarizes all drivers using Column L (NTD) and Column M (Cash in/out), only for rows where Column D is not empty.</p>
+      <div class="page-links">
+        <a class="link-chip" href="/">Back To Payroll</a>
+      </div>
 
       <form id="ntd-form" class="form-grid">
         <label>
-          Driver
-          <input id="driver-input" name="driver" type="text" placeholder="Enter driver name" required />
+          Driver Search (Optional)
+          <input id="driver-input" name="driver" type="text" placeholder="Leave empty for all drivers" />
         </label>
         <div class="action-stack">
-          <button id="ntd-submit-btn" type="submit">Generate NTD Summary</button>
+          <button id="ntd-submit-btn" type="submit">Generate Driver Balance Summary</button>
         </div>
       </form>
 
@@ -27,26 +30,10 @@
 
     <section class="panel panel-table">
       <h2>Summary</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Day</th>
-              <th>NTD</th>
-            </tr>
-          </thead>
-          <tbody id="ntd-body"></tbody>
-          <tfoot>
-            <tr>
-              <th>Total</th>
-              <th id="ntd-total">0.00</th>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+      <div id="ntd-summary-list" class="driver-summary-list"></div>
     </section>
   </main>
 
-  <script src="/driver-ntd-summary.js?v=20260330a"></script>
+  <script src="/driver-ntd-summary.js?v=20260331a"></script>
 </body>
 </html>

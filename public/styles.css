@@ -248,6 +248,41 @@ button:disabled {
   border: 1px solid #cbd5e1;
 }
 
+.driver-summary-list {
+  display: grid;
+  gap: 12px;
+}
+
+.driver-summary-card {
+  border: 1px solid #d7e0ea;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.driver-summary-card h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: #0f172a;
+}
+
+.summary-total-row th,
+.summary-total-row td {
+  background: #f8fafc;
+  font-weight: 800;
+}
+
+.driver-note {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #f3d08f;
+  background: #fff7e8;
+  color: #7c4a03;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

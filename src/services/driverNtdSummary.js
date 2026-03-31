@@ -17,7 +17,9 @@ const CELL_CONFIG = Object.freeze({
   minRow: 4,
   maxRow: 47,
   driverCol: 3, // Column C
-  ntdCol: 12 // Column L
+  includeFlagCol: 4, // Column D
+  ntdCol: 12, // Column L
+  cashInOutCol: 13 // Column M
 });
 
 function normalizeMoneyValue(value) {
@@ -43,15 +45,96 @@ function normalizeMoneyValue(value) {
   return isParenthesesNegative ? parsed * -1 : parsed;
 }
 
-function summarizeDriverNtdByDay({ workbookPath, driver }) {
-  const trimmedDriver = String(driver || '').trim();
-  if (!trimmedDriver) {
+function roundBalanceByRule(value) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount)) {
+    return 0;
+  }
+
+  const sign = amount < 0 ? -1 : 1;
+  const absolute = Math.abs(amount);
+  const whole = Math.floor(absolute);
+  const fraction = absolute - whole;
+  const roundedAbsolute = fraction > 0.5 ? whole + 1 : whole;
+  return sign * roundedAbsolute;
+}
+
+function buildSettlementNote(days, totals) {
+  const owedByNegativeNtd = days.reduce((sum, day) => (
+    day.ntd < 0 ? sum + Math.abs(day.ntd) : sum
+  ), 0);
+  const owedByNegativeCash = days.reduce((sum, day) => (
+    day.cashInOut < 0 ? sum + Math.abs(day.cashInOut) : sum
+  ), 0);
+  const owedToDriverRaw = Math.max(owedByNegativeNtd, owedByNegativeCash);
+  const owedToDriverRounded = Math.abs(roundBalanceByRule(owedToDriverRaw));
+  const driverOwesUsRounded = totals.balance < 0 ? Math.abs(totals.balance) : 0;
+
+  if (owedToDriverRounded <= 0 || driverOwesUsRounded <= 0) {
+    return null;
+  }
+
+  if (driverOwesUsRounded > owedToDriverRounded) {
+    const stillCollect = driverOwesUsRounded - owedToDriverRounded;
     return {
-      ok: false,
-      code: ERROR_CODES.INPUT_INVALID,
-      message: 'Driver name is required.'
+      owedToDriver: owedToDriverRounded,
+      driverOwesUs: driverOwesUsRounded,
+      stillCollect,
+      message: `We owe the driver ${owedToDriverRounded.toFixed(2)} but the driver owes ${driverOwesUsRounded.toFixed(2)}, so we still need to collect ${stillCollect.toFixed(2)}.`
     };
   }
+
+  if (owedToDriverRounded > driverOwesUsRounded) {
+    const stillPay = owedToDriverRounded - driverOwesUsRounded;
+    return {
+      owedToDriver: owedToDriverRounded,
+      driverOwesUs: driverOwesUsRounded,
+      stillPay,
+      message: `We owe the driver ${owedToDriverRounded.toFixed(2)} and the driver owes ${driverOwesUsRounded.toFixed(2)}, so we still need to pay ${stillPay.toFixed(2)}.`
+    };
+  }
+
+  return {
+    owedToDriver: owedToDriverRounded,
+    driverOwesUs: driverOwesUsRounded,
+    settled: true,
+    message: `We owe the driver ${owedToDriverRounded.toFixed(2)} and the driver owes ${driverOwesUsRounded.toFixed(2)}, so it is fully settled.`
+  };
+}
+
+function getCellValue(sheet, columnNumber, rowNumber) {
+  return sheet[xlsx.utils.encode_cell({ c: columnNumber - 1, r: rowNumber - 1 })]?.v;
+}
+
+function isNonEmpty(value) {
+  return String(value ?? '').trim() !== '';
+}
+
+function ensureDriverSummary(map, displayName, normalizedName) {
+  if (map[normalizedName]) {
+    return map[normalizedName];
+  }
+
+  const dayMap = {};
+  DAY_SHEET_CONFIG.forEach(({ day }) => {
+    dayMap[day] = {
+      day,
+      ntd: 0,
+      cashInOut: 0,
+      balance: 0
+    };
+  });
+
+  map[normalizedName] = {
+    driver: displayName,
+    daysByName: dayMap
+  };
+  return map[normalizedName];
+}
+
+function summarizeDriversNtdBalance({ workbookPath, driver }) {
+  const trimmedDriver = String(driver || '').trim();
+  const normalizedFilter = normalizeDriverName(trimmedDriver);
 
   if (!fs.existsSync(workbookPath)) {
     return {
@@ -62,13 +145,9 @@ function summarizeDriverNtdByDay({ workbookPath, driver }) {
   }
 
   const workbook = xlsx.readFile(workbookPath, { raw: true });
-  const targetDriver = normalizeDriverName(trimmedDriver);
-
-  const days = [];
+  const driversMap = {};
 
   for (const dayConfig of DAY_SHEET_CONFIG) {
-    let dayAmount = 0;
-
     for (const sheetName of dayConfig.sheets) {
       const sheet = workbook.Sheets[sheetName];
       if (!sheet) {
@@ -80,38 +159,99 @@ function summarizeDriverNtdByDay({ workbookPath, driver }) {
       }
 
       for (let row = CELL_CONFIG.minRow; row <= CELL_CONFIG.maxRow; row += 1) {
-        const rawDriver = sheet[xlsx.utils.encode_cell({ c: CELL_CONFIG.driverCol - 1, r: row - 1 })]?.v;
+        const rawDriver = getCellValue(sheet, CELL_CONFIG.driverCol, row);
         const rowDriver = normalizeDriverName(rawDriver);
-        if (!rowDriver || rowDriver !== targetDriver) {
+        if (!rowDriver) {
           continue;
         }
 
-        const rawNtd = sheet[xlsx.utils.encode_cell({ c: CELL_CONFIG.ntdCol - 1, r: row - 1 })]?.v;
-        const ntd = normalizeMoneyValue(rawNtd);
-        if (ntd !== 0) {
-          dayAmount += ntd;
+        if (normalizedFilter && !rowDriver.includes(normalizedFilter)) {
+          continue;
         }
+
+        const includeFlag = getCellValue(sheet, CELL_CONFIG.includeFlagCol, row);
+        if (!isNonEmpty(includeFlag)) {
+          continue;
+        }
+
+        const rawNtd = getCellValue(sheet, CELL_CONFIG.ntdCol, row);
+        const rawCashInOut = getCellValue(sheet, CELL_CONFIG.cashInOutCol, row);
+        const ntd = normalizeMoneyValue(rawNtd);
+        const cashInOut = normalizeMoneyValue(rawCashInOut);
+
+        if (ntd === 0 && cashInOut === 0) {
+          continue;
+        }
+
+        const summary = ensureDriverSummary(
+          driversMap,
+          String(rawDriver || '').trim().replace(/\s+/g, ' '),
+          rowDriver
+        );
+        const dayBucket = summary.daysByName[dayConfig.day];
+        dayBucket.ntd += ntd;
+        dayBucket.cashInOut += cashInOut;
       }
     }
-
-    days.push({
-      day: dayConfig.day,
-      amount: dayAmount
-    });
   }
 
-  const total = days.reduce((sum, entry) => sum + entry.amount, 0);
+  const drivers = Object.values(driversMap)
+    .map((summary) => {
+      const days = DAY_SHEET_CONFIG.map(({ day }) => {
+        const row = summary.daysByName[day];
+        return {
+          day: row.day,
+          ntd: row.ntd,
+          cashInOut: row.cashInOut,
+          balance: row.cashInOut - row.ntd
+        };
+      });
+
+      days.forEach((entry) => {
+        entry.balance = roundBalanceByRule(entry.balance);
+      });
+
+      const totals = days.reduce(
+        (acc, entry) => {
+          acc.ntd += entry.ntd;
+          acc.cashInOut += entry.cashInOut;
+          acc.balance += entry.balance;
+          return acc;
+        },
+        { ntd: 0, cashInOut: 0, balance: 0 }
+      );
+      const settlementNote = buildSettlementNote(days, totals);
+
+      return {
+        driver: summary.driver,
+        days,
+        totals,
+        settlementNote
+      };
+    })
+    .sort((a, b) => a.driver.localeCompare(b.driver));
+
+  const grandTotals = drivers.reduce(
+    (acc, entry) => {
+      acc.ntd += entry.totals.ntd;
+      acc.cashInOut += entry.totals.cashInOut;
+      acc.balance += entry.totals.balance;
+      return acc;
+    },
+    { ntd: 0, cashInOut: 0, balance: 0 }
+  );
 
   return {
     ok: true,
-    driver: trimmedDriver,
-    days,
-    total
+    filter: trimmedDriver || null,
+    drivers,
+    grandTotals
   };
 }
 
 module.exports = {
-  summarizeDriverNtdByDay,
+  summarizeDriversNtdBalance,
   normalizeMoneyValue,
-  DAY_SHEET_CONFIG
+  DAY_SHEET_CONFIG,
+  roundBalanceByRule
 };
