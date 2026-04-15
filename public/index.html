@@ -4,17 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Harbor View Payroll</title>
-  <link rel="stylesheet" href="/styles.css?v=20260330d" />
+  <link rel="stylesheet" href="/styles.css?v=20260415c" />
 </head>
 <body>
   <main class="page">
     <section class="panel panel-hero">
       <h1>Harbor View Payroll</h1>
-      <p class="subtext">Run payroll from <code>Daily Sheet.xlsx</code> and review grouped driver totals.</p>
+      <p class="subtext">Run payroll from <code>Daily Sheet.xlsx</code>, then generate reports from this same page.</p>
       <div class="page-links">
         <a class="link-chip" href="/zelle">Manage Zelle Drivers</a>
-        <a class="link-chip" href="/sorted-pay">View Sorted Driver Pay</a>
-        <a class="link-chip" href="/driver-ntd-summary">Driver NTD Summary</a>
+        <a class="link-chip" href="/driver-ntd-summary">Settlement Pass</a>
       </div>
 
       <form id="payroll-form" class="form-grid">
@@ -48,12 +47,41 @@
 
         <div class="action-stack">
           <button id="submit-btn" type="submit">Run Payroll</button>
-          <button id="report-btn" type="button" class="secondary" disabled>Generate Report</button>
         </div>
       </form>
 
       <div id="status" class="status" role="status" aria-live="polite"></div>
       <ul id="warnings" class="warnings"></ul>
+    </section>
+
+    <section class="panel panel-table">
+      <h2>Report Center</h2>
+      <p class="subtext">Run payroll first, then generate reports.</p>
+      <div class="action-row action-wrap">
+        <button id="all-slips-btn" type="button" class="secondary" disabled>Generate Pay Slips (All)</button>
+        <button id="cash-slips-btn" type="button" class="secondary" disabled>Generate Cash Driver Slips</button>
+        <button id="zelle-overview-btn" type="button" class="secondary" disabled>Show Zelle Overview</button>
+        <button id="zelle-export-btn" type="button" class="secondary" disabled>Export Zelle Excel</button>
+        <button id="cash-keep-btn" type="button" class="secondary" disabled>Generate Cash To Keep</button>
+      </div>
+    </section>
+
+    <section class="panel panel-table">
+      <h2>Sorted Driver Overview</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Driver</th>
+              <th>Type</th>
+              <th>Total Amount</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="report-overview-body"></tbody>
+        </table>
+      </div>
     </section>
 
     <section class="panel panel-table">
@@ -91,12 +119,12 @@
     </section>
 
     <section id="report-preview" class="panel hidden">
-      <h2>Pay Slip Report</h2>
+      <h2 id="report-title">Report</h2>
       <p id="report-period" class="subtext"></p>
-      <div id="report-slips" class="report-grid"></div>
+      <div id="report-slips"></div>
     </section>
   </main>
 
-  <script src="/app.js?v=20260330d"></script>
+  <script src="/app.js?v=20260415c"></script>
 </body>
 </html>

@@ -1,7 +1,9 @@
 import json
 import os
+import re
 import sys
 from collections import defaultdict
+from datetime import date, datetime, timedelta
 
 try:
     import openpyxl
@@ -60,6 +62,12 @@ class PayrollError(Exception):
         super().__init__(message)
 
 
+DAY_FORMULA_RE = re.compile(
+    r"^=\s*(?:'([^']+)'|([A-Za-z0-9_ ]+))\s*!\s*\$?B\$?1\s*([+-]\s*\d+)?\s*$",
+    re.IGNORECASE,
+)
+
+
 def parse_payload(raw_payload):
     try:
         payload = json.loads(raw_payload or "{}")
@@ -95,9 +103,117 @@ def build_sheets_to_process(from_day, to_day, config=CONFIG):
     return sheet_names
 
 
+def coerce_date(value):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    for fmt in ("%m/%d/%Y", "%m/%d/%y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+
+    try:
+        parsed = datetime.strptime(text, "%m/%d")
+        return date(datetime.now().year, parsed.month, parsed.day)
+    except ValueError:
+        return None
+
+
+def sheet_to_day_map(config=CONFIG):
+    mapping = {}
+    for day_name, sheet_names in config["day_to_sheets"].items():
+        for sheet_name in sheet_names:
+            mapping[sheet_name] = day_name
+    return mapping
+
+
+def resolve_sheet_day_labels(workbook_values, workbook_formulas, sheet_names, config=CONFIG):
+    cells = config["cells"]
+    day_order = config["day_order"]
+    sheet_day_lookup = sheet_to_day_map(config)
+    resolved_dates = {}
+
+    def resolve_from_formula(sheet_name, stack):
+        if sheet_name in resolved_dates:
+            return resolved_dates[sheet_name]
+        if sheet_name not in workbook_values.sheetnames:
+            return None
+        if sheet_name in stack:
+            return None
+
+        value_sheet = workbook_values[sheet_name]
+        raw_value = value_sheet[cells["day_cell"]].value
+        parsed = coerce_date(raw_value)
+        if parsed:
+            resolved_dates[sheet_name] = parsed
+            return parsed
+
+        formula_sheet = workbook_formulas[sheet_name]
+        formula_value = formula_sheet[cells["day_cell"]].value
+        formula_text = str(formula_value or "").strip()
+        match = DAY_FORMULA_RE.match(formula_text)
+        if not match:
+            return None
+
+        ref_sheet = (match.group(1) or match.group(2) or "").strip()
+        offset_text = match.group(3) or ""
+        offset_days = int(offset_text.replace(" ", "")) if offset_text else 0
+
+        parent = resolve_from_formula(ref_sheet, stack | {sheet_name})
+        if not parent:
+            return None
+
+        resolved = parent + timedelta(days=offset_days)
+        resolved_dates[sheet_name] = resolved
+        return resolved
+
+    for sheet_name in sheet_names:
+        resolve_from_formula(sheet_name, set())
+
+    anchor = None
+    for sheet_name in sheet_names:
+        anchor_date = resolved_dates.get(sheet_name)
+        anchor_day_name = sheet_day_lookup.get(sheet_name)
+        if anchor_date and anchor_day_name in day_order:
+            anchor = (anchor_day_name, anchor_date)
+            break
+
+    if anchor:
+        anchor_day_name, anchor_date = anchor
+        anchor_idx = day_order.index(anchor_day_name)
+        for sheet_name in sheet_names:
+            if sheet_name in resolved_dates:
+                continue
+            day_name = sheet_day_lookup.get(sheet_name)
+            if day_name not in day_order:
+                continue
+            day_idx = day_order.index(day_name)
+            resolved_dates[sheet_name] = anchor_date + timedelta(days=day_idx - anchor_idx)
+
+    labels = {}
+    for sheet_name in sheet_names:
+        resolved = resolved_dates.get(sheet_name)
+        if resolved:
+            labels[sheet_name] = resolved.strftime("%m/%d")
+            continue
+
+        fallback_day = sheet_day_lookup.get(sheet_name)
+        labels[sheet_name] = fallback_day or sheet_name
+
+    return labels
+
+
 def extract_rows(workbook_path, sheet_names, config=CONFIG):
     try:
         workbook = openpyxl.load_workbook(workbook_path, data_only=True)
+        workbook_formulas = openpyxl.load_workbook(workbook_path, data_only=False)
     except FileNotFoundError as exc:
         raise PayrollError("WORKBOOK_MISSING", f"Workbook not found at {workbook_path}.", str(exc))
     except OSError as exc:
@@ -105,13 +221,14 @@ def extract_rows(workbook_path, sheet_names, config=CONFIG):
 
     records = []
     cells = config["cells"]
+    day_labels = resolve_sheet_day_labels(workbook, workbook_formulas, sheet_names, config)
 
     for sheet_name in sheet_names:
         if sheet_name not in workbook.sheetnames:
             raise PayrollError("SHEET_NOT_FOUND", f"Worksheet '{sheet_name}' was not found.")
 
         sheet = workbook[sheet_name]
-        day = sheet[cells["day_cell"]].value
+        day = day_labels.get(sheet_name)
 
         for row_idx in range(cells["min_row"], cells["max_row"] + 1):
             amount = sheet.cell(row=row_idx, column=cells["amount_col"]).value

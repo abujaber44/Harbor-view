@@ -69,8 +69,7 @@ Open: [http://localhost:3004](http://localhost:3004)
 
 - `/` Payroll home
 - `/zelle` Manage Zelle driver list
-- `/sorted-pay` Sorted driver pay page + report generation
-- `/driver-ntd-summary` Driver NTD/Cash-in-out weekly summary page
+- `/driver-ntd-summary` Settlement Pass preview/apply workflow
 
 ## API Endpoints
 
@@ -128,41 +127,66 @@ Saves Zelle drivers:
 
 Returns sorted pay info for reporting:
 
-- Zelle drivers first
-- then higher total pay
-- then name
+- Higher total pay first
+- Includes Zelle/Cash tagging
+- Includes split arrays: `allDrivers`, `cashDrivers`, `zelleDriverRows`
 
 Also includes cash summary values used by cash-to-keep report.
 
-### `GET /api/driver-ntd-summary?driver=<optional search>`
+### `GET /api/reports/zelle-export`
 
-Returns driver NTD/Cash-in-out weekly details.
+Generates an Excel download (`.xlsx`) with:
 
-- If `driver` is omitted: returns all drivers.
-- If `driver` is present: case-insensitive contains search.
+- Zelle drivers only
+- Sorted by total amount descending
+- Final `TOTAL` row
 
-Response shape:
+### `POST /api/settlement/preview`
+
+Previews settlement allocations without modifying the workbook.
+
+Request:
+
+```json
+{ "fromDay": "Monday", "toDay": "Thursday" }
+```
+
+Response (shape):
 
 ```json
 {
   "ok": true,
-  "filter": "ali",
-  "drivers": [
-    {
-      "driver": "Ali",
-      "days": [
-        { "day": "Monday", "ntd": 10, "cashInOut": 0, "balance": -10 }
-      ],
-      "totals": { "ntd": 10, "cashInOut": 0, "balance": -10 },
-      "settlementNote": {
-        "owedToDriver": 96,
-        "driverOwesUs": 145,
-        "stillCollect": 49,
-        "message": "We owe the driver 96.00 but the driver owes 145.00, so we still need to collect 49.00."
-      }
-    }
-  ],
-  "grandTotals": { "ntd": 10, "cashInOut": 0, "balance": -10 }
+  "fromDay": "Monday",
+  "toDay": "Thursday",
+  "driversReviewed": 7,
+  "driversWithOpenBalance": 2,
+  "driversProcessed": 1,
+  "rowsChanged": 3,
+  "rowsAdjusted": 3,
+  "totalDeducted": 150,
+  "lockedSessionsSkipped": 0,
+  "unresolvedShortageTotal": 0,
+  "warnings": [],
+  "drivers": []
+}
+```
+
+### `POST /api/settlement/apply`
+
+Applies settlement allocations directly to `Daily Sheet.xlsx` and creates a backup copy in `./backups`.
+
+Request:
+
+```json
+{ "fromDay": "Monday", "toDay": "Thursday" }
+```
+
+Response includes the same summary shape as preview plus:
+
+```json
+{
+  "backupFile": "Daily Sheet.20260415-101010.xlsx",
+  "workbookFile": "Daily Sheet.xlsx"
 }
 ```
 
@@ -196,7 +220,7 @@ Response shape:
 - Notes: `O`
 - Day date: `B1`
 
-### Driver NTD Summary
+### Settlement Pass
 
 - Same day sheets and row range `4..47`
 - Rows included only when column `D` is not empty
@@ -204,6 +228,8 @@ Response shape:
 - Driver: `C`
 - NTD: `L`
 - Cash in/out: `M`
+- Adjustment: `N`
+- Notes: `O`
 
 ## Calculation Rules
 
@@ -220,21 +246,20 @@ Response shape:
 - Formula:
 - `cashToKeep = WeeklyGrossM41 + totalZellePay`
 
-### Driver NTD Balance
+### Settlement Allocation
 
-- Per-day balance formula:
-- `balance = cashInOut - ntd`
-
-- Rounding:
-- decimal part `> 0.50` rounds up
-- decimal part `<= 0.50` rounds down
-
-- Settlement note logic:
-- no number mutation in daily/total balance
-- note compares rounded:
-- amount we owe driver
-- amount driver owes us
-- displays whether to still collect, still pay, or fully settled
+- Target rows are same-driver rows with `cashInOut >= 0` and short amount from:
+- `N` when `N` has a value, otherwise rounded `max(0, ntd - cashInOut)`.
+- Source rows are same-driver rows where `cashInOut < 0`.
+- Sources/targets are processed FIFO by day, then period (`AM` before `PM`), then row number.
+- Available source capacity is:
+- `max(0, abs(cashInOut) - max(0, -adj))`
+- Apply mutation:
+- target `M += amount` (covered shortage increases cash in/out)
+- target `N = remaining short` (0 when fully cleared)
+- source `N -= amount`
+- source `O` appends `Deducted $X for M/D...`
+- source negative `M` remains unchanged.
 
 ## Reports Available
 
@@ -256,6 +281,7 @@ Response shape:
 - `src/services/*` business logic and workbook parsing
 - `public/*` browser pages/scripts/styles
 - `pay.py` Python payroll extraction/output generation
+- `settlement.py` Python settlement preview/apply engine for workbook adjustments
 - `test/node/*` Node tests
 - `test/python/*` Python tests
 

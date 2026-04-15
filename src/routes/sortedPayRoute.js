@@ -19,7 +19,9 @@ function createSortedPayHandler() {
 
     try {
       const zelleDrivers = await readZelleDrivers();
-      const sortedDrivers = buildSortedDriverPay(parsedOutput.groupedTotals, zelleDrivers);
+      const allDrivers = buildSortedDriverPay(parsedOutput.groupedTotals, zelleDrivers);
+      const cashDrivers = allDrivers.filter((driver) => !driver.isZelle);
+      const zelleDriverRows = allDrivers.filter((driver) => driver.isZelle);
       const weeklyGrossM41 = readWeeklyGrossM41(APP_CONFIG.workbookPath);
 
       if (!weeklyGrossM41.ok) {
@@ -31,8 +33,7 @@ function createSortedPayHandler() {
         });
       }
 
-      const zelleTotal = sortedDrivers
-        .filter((driver) => driver.isZelle)
+      const zelleTotal = zelleDriverRows
         .reduce((sum, driver) => sum + Number(driver.totalAmount || 0), 0);
       const cashToKeep = Number(weeklyGrossM41.amount || 0) + zelleTotal;
 
@@ -40,7 +41,10 @@ function createSortedPayHandler() {
         ok: true,
         outputFile: path.basename(APP_CONFIG.outputPath),
         zelleDrivers,
-        sortedDrivers,
+        sortedDrivers: allDrivers,
+        allDrivers,
+        cashDrivers,
+        zelleDriverRows,
         cashSummary: {
           weeklyGrossM41: weeklyGrossM41.amount,
           zelleTotal,

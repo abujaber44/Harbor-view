@@ -8,39 +8,36 @@ function setStatus(message, type = 'neutral') {
   statusEl.className = `status ${type}`;
 }
 
-function parseDriverLines(value) {
-  return String(value || '')
-    .split('\n')
-    .map((line) => line.trim())
+function parseInput() {
+  return String(input.value || '')
+    .split(/\r?\n/)
+    .map((name) => name.trim())
     .filter(Boolean);
 }
 
-function toTextareaValue(drivers) {
-  return (drivers || []).join('\n');
-}
-
 async function loadDrivers() {
-  setStatus('Loading saved drivers...');
+  setStatus('Loading saved drivers...', 'neutral');
 
   try {
     const response = await fetch('/api/zelle-drivers');
     const data = await response.json();
 
     if (!response.ok || !data.ok) {
-      throw new Error(data.message || 'Could not load drivers.');
+      throw new Error(`${data.message || 'Could not load drivers.'} (${data.code || 'UNKNOWN'})`);
     }
 
-    input.value = toTextareaValue(data.drivers);
-    setStatus(`Loaded ${data.drivers.length} saved Zelle driver(s).`, 'success');
+    const drivers = Array.isArray(data.drivers) ? data.drivers : [];
+    input.value = drivers.join('\n');
+    setStatus(`Loaded ${drivers.length} Zelle driver(s).`, 'success');
   } catch (error) {
-    setStatus(`Failed to load: ${error.message}`, 'error');
+    setStatus(`Failed to load drivers: ${error.message}`, 'error');
   }
 }
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   saveButton.disabled = true;
-  setStatus('Saving...');
+  setStatus('Saving drivers...', 'neutral');
 
   try {
     const response = await fetch('/api/zelle-drivers', {
@@ -48,19 +45,17 @@ form.addEventListener('submit', async (event) => {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        drivers: parseDriverLines(input.value)
-      })
+      body: JSON.stringify({ drivers: parseInput() })
     });
 
     const data = await response.json();
-
     if (!response.ok || !data.ok) {
-      throw new Error(data.message || 'Could not save drivers.');
+      throw new Error(`${data.message || 'Could not save drivers.'} (${data.code || 'UNKNOWN'})`);
     }
 
-    input.value = toTextareaValue(data.drivers);
-    setStatus(`Saved ${data.drivers.length} Zelle driver(s).`, 'success');
+    const drivers = Array.isArray(data.drivers) ? data.drivers : [];
+    input.value = drivers.join('\n');
+    setStatus(`Saved ${drivers.length} Zelle driver(s).`, 'success');
   } catch (error) {
     setStatus(`Save failed: ${error.message}`, 'error');
   } finally {

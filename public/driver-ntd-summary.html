@@ -3,37 +3,63 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Driver NTD Summary | Harbor View Payroll</title>
-  <link rel="stylesheet" href="/styles.css?v=20260330e" />
+  <title>Settlement Pass | Harbor View Payroll</title>
+  <link rel="stylesheet" href="/styles.css?v=20260415b" />
 </head>
 <body>
   <main class="page">
-    <section class="panel panel-hero">
-      <h1>Driver NTD Summary</h1>
-      <p class="subtext">Summarizes all drivers using Column L (NTD) and Column M (Cash in/out), only for rows where Column D is not empty.</p>
+    <section class="panel panel-hero settlement-tool-card">
+      <div class="settlement-tool-title">
+        <h1>Settlement Pass</h1>
+        <span class="badge">Utility</span>
+      </div>
+      <p class="subtext">Reallocate unpaid shortages using owed amounts for the same driver in the selected day range.</p>
       <div class="page-links">
         <a class="link-chip" href="/">Back To Payroll</a>
       </div>
 
-      <form id="ntd-form" class="form-grid">
+      <form id="settlement-form" class="form-grid">
         <label>
-          Driver Search (Optional)
-          <input id="driver-input" name="driver" type="text" placeholder="Leave empty for all drivers" />
+          Start Day
+          <select id="from-day" name="fromDay" required>
+            <option value="Monday">Monday</option>
+            <option value="Tuesday">Tuesday</option>
+            <option value="Wednesday">Wednesday</option>
+            <option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option>
+            <option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
+          </select>
+        </label>
+        <label>
+          End Day
+          <select id="to-day" name="toDay" required>
+            <option value="Monday">Monday</option>
+            <option value="Tuesday">Tuesday</option>
+            <option value="Wednesday">Wednesday</option>
+            <option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option>
+            <option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
+          </select>
         </label>
         <div class="action-stack">
-          <button id="ntd-submit-btn" type="submit">Generate Driver Balance Summary</button>
+          <button id="settlement-preview-btn" type="button">Preview Settlement</button>
+          <button id="settlement-apply-btn" type="button" disabled>Approve And Apply</button>
         </div>
       </form>
 
-      <div id="ntd-status" class="status" role="status" aria-live="polite"></div>
+      <div id="settlement-status" class="status" role="status" aria-live="polite"></div>
+      <ul id="settlement-warnings" class="warnings"></ul>
     </section>
 
     <section class="panel panel-table">
-      <h2>Summary</h2>
-      <div id="ntd-summary-list" class="driver-summary-list"></div>
+      <h2>Settlement Preview</h2>
+      <p class="subtext">Review projected adjustments before applying changes to the workbook.</p>
+      <div id="settlement-preview" class="settlement-preview-canvas"></div>
     </section>
   </main>
 
-  <script src="/driver-ntd-summary.js?v=20260331a"></script>
+  <script src="/driver-ntd-summary.js?v=20260415b"></script>
 </body>
 </html>

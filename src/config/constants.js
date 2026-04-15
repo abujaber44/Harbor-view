@@ -22,8 +22,10 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const APP_CONFIG = Object.freeze({
   port: Number(process.env.PORT || 3004),
   pythonScriptPath: path.join(REPO_ROOT, 'pay.py'),
+  settlementScriptPath: path.join(REPO_ROOT, 'settlement.py'),
   workbookPath: process.env.PAYROLL_WORKBOOK_PATH || path.join(REPO_ROOT, 'Daily Sheet.xlsx'),
   outputPath: process.env.PAYROLL_OUTPUT_PATH || path.join(REPO_ROOT, 'output.xlsx'),
+  backupDir: process.env.PAYROLL_BACKUP_DIR || path.join(REPO_ROOT, 'backups'),
   zelleDriversPath: process.env.PAYROLL_ZELLE_DRIVERS_PATH || path.join(REPO_ROOT, 'zelle-drivers.json'),
   maxWorkbookBytes: Number(process.env.PAYROLL_MAX_WORKBOOK_BYTES || 25 * 1024 * 1024),
   pythonTimeoutMs: Number(process.env.PAYROLL_PYTHON_TIMEOUT_MS || 120000)

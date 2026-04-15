@@ -13,10 +13,6 @@ function buildSortedDriverPay(groupedTotals, zelleDrivers) {
       isZelle: zelleLookup.has(normalizeDriverName(group.name))
     }))
     .sort((a, b) => {
-      if (a.isZelle !== b.isZelle) {
-        return a.isZelle ? -1 : 1;
-      }
-
       if (a.totalAmount !== b.totalAmount) {
         return Number(b.totalAmount || 0) - Number(a.totalAmount || 0);
       }

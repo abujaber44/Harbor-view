@@ -49,6 +49,28 @@ class PayScriptTests(unittest.TestCase):
 
             self.assertEqual(ctx.exception.code, "SHEET_NOT_FOUND")
 
+    def test_extract_rows_resolves_day_from_formula_cell(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = os.path.join(tmpdir, "sample.xlsx")
+            workbook = openpyxl.Workbook()
+
+            mon_am = workbook.active
+            mon_am.title = "Mon AM"
+            mon_am["B1"] = datetime(2026, 4, 6)
+
+            tues_am = workbook.create_sheet("Tues AM")
+            tues_am["B1"] = "='Mon AM'!B1+1"
+            tues_am["C4"] = "Driver Two"
+            tues_am["M4"] = -75
+
+            workbook.save(workbook_path)
+
+            rows = extract_rows(workbook_path, ["Tues AM"])
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0][0], "04/07")
+            self.assertEqual(rows[0][1], "Driver Two")
+            self.assertEqual(rows[0][2], 75)
+
 
 if __name__ == "__main__":
     unittest.main()
