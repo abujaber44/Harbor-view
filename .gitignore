@@ -38,3 +38,6 @@ uploads/*
 .idea/
 *.swp
 *.swo
+
+# Others
+start_server.bat
