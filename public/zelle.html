@@ -4,17 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zelle Drivers | Harbor View Payroll</title>
-  <link rel="stylesheet" href="/styles.css?v=20260415c" />
+  <link rel="stylesheet" href="/styles.css?v=20261110b" />
 </head>
 <body>
+  <header class="topnav">
+    <div class="topnav-inner">
+      <a class="topnav-brand" href="/">Harbor View Payroll</a>
+      <nav class="topnav-links" aria-label="Main">
+        <a href="/">Payroll</a>
+        <a href="/driver-ntd-summary">Settlement Pass</a>
+        <a href="/zelle" aria-current="page">Zelle Drivers</a>
+      </nav>
+    </div>
+  </header>
+
   <main class="page">
     <section class="panel panel-hero">
       <h1>Zelle Drivers</h1>
       <p class="subtext">Maintain the driver list used for Zelle tags, Zelle reporting, and cash-to-keep.</p>
-      <div class="page-links">
-        <a class="link-chip" href="/">Back To Payroll</a>
-        <a class="link-chip" href="/driver-ntd-summary">Settlement Pass</a>
-      </div>
 
       <form id="zelle-form" class="stack-form">
         <label for="zelle-drivers-input">Driver Names (one per line)</label>

@@ -1,11 +1,21 @@
 const path = require('path');
 const express = require('express');
-const { DAY_ORDER } = require('./config/constants');
+const { APP_CONFIG, DAY_ORDER } = require('./config/constants');
 const { createSubmitHandler } = require('./routes/submitRoute');
 const { createZelleListHandler, createZelleSaveHandler } = require('./routes/zelleRoute');
 const { createSortedPayHandler } = require('./routes/sortedPayRoute');
 const { createSettlementHandler } = require('./routes/settlementRoute');
 const { createZelleExportHandler } = require('./routes/zelleReportRoute');
+const {
+  createWorkbookStatusHandler,
+  createWorkbookUploadHandler,
+  workbookUploadErrorHandler
+} = require('./routes/workbookRoute');
+const {
+  createHistoryListHandler,
+  createHistoryGetHandler,
+  createHistoryDeleteHandler
+} = require('./routes/historyRoute');
 
 function createApp({ runtime }) {
   const app = express();
@@ -29,6 +39,18 @@ function createApp({ runtime }) {
   app.get('/api/reports/zelle-export', createZelleExportHandler());
   app.post('/api/settlement/preview', createSettlementHandler({ runtime, apply: false }));
   app.post('/api/settlement/apply', createSettlementHandler({ runtime, apply: true }));
+
+  app.get('/api/workbook', createWorkbookStatusHandler());
+  app.post(
+    '/api/workbook',
+    express.raw({ type: 'application/octet-stream', limit: APP_CONFIG.maxWorkbookBytes }),
+    createWorkbookUploadHandler(),
+    workbookUploadErrorHandler
+  );
+
+  app.get('/api/history', createHistoryListHandler());
+  app.get('/api/history/:id', createHistoryGetHandler());
+  app.delete('/api/history/:id', createHistoryDeleteHandler());
 
   app.get('/', (_req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));

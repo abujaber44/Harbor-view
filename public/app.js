@@ -17,6 +17,39 @@ const reportTitle = document.getElementById('report-title');
 const reportPeriod = document.getElementById('report-period');
 const reportSlips = document.getElementById('report-slips');
 
+const needsRunSections = Array.from(document.querySelectorAll('.needs-run'));
+const stepperItems = Array.from(document.querySelectorAll('#stepper li'));
+const rangeLabel = document.getElementById('range-label');
+const runBanner = document.getElementById('run-banner');
+const runBannerText = document.getElementById('run-banner-text');
+const runBannerClose = document.getElementById('run-banner-close');
+
+const sumTotal = document.getElementById('sum-total');
+const sumDrivers = document.getElementById('sum-drivers');
+const sumCash = document.getElementById('sum-cash');
+const sumCashCount = document.getElementById('sum-cash-count');
+const sumZelle = document.getElementById('sum-zelle');
+const sumZelleCount = document.getElementById('sum-zelle-count');
+const sumKeep = document.getElementById('sum-keep');
+const sumKeepNote = document.getElementById('sum-keep-note');
+
+const workbookBadge = document.getElementById('workbook-badge');
+const workbookFile = document.getElementById('workbook-file');
+const workbookModified = document.getElementById('workbook-modified');
+const workbookDate = document.getElementById('workbook-date');
+const workbookSheets = document.getElementById('workbook-sheets');
+const workbookDropzone = document.getElementById('workbook-dropzone');
+const workbookChooseButton = document.getElementById('workbook-choose-btn');
+const workbookFileInput = document.getElementById('workbook-file-input');
+const workbookStatusEl = document.getElementById('workbook-status');
+
+const historyBody = document.getElementById('history-body');
+const historyEmpty = document.getElementById('history-empty');
+const historyTableWrap = document.getElementById('history-table-wrap');
+
+let workbookReady = false;
+let workbookExists = false;
+let viewingRunId = null;
 let latestRange = null;
 let latestGroupedTotals = [];
 let latestZelleDrivers = [];
@@ -86,7 +119,61 @@ function clearResults() {
     zelleDriverRows: [],
     cashSummary: null
   };
+  viewingRunId = null;
+  runBanner.classList.add('hidden');
+  setResultsVisible(false);
   updateReportButtonState();
+  updateStepper();
+  markActiveHistoryRow();
+}
+
+function setResultsVisible(visible) {
+  needsRunSections.forEach((section) => section.classList.toggle('hidden', !visible));
+}
+
+function updateStepper() {
+  const hasRun = Boolean(latestRange);
+  const done = {
+    workbook: workbookReady,
+    range: hasRun,
+    reports: false
+  };
+  const current = !workbookReady ? 'workbook' : (hasRun ? 'reports' : 'range');
+
+  stepperItems.forEach((item) => {
+    const step = item.dataset.step;
+    item.classList.toggle('is-done', Boolean(done[step]));
+    item.classList.toggle('is-current', step === current);
+  });
+}
+
+function sumTotals(drivers) {
+  return (drivers || []).reduce((sum, driver) => sum + Number(driver.totalAmount || 0), 0);
+}
+
+function countLabel(count, noun) {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+function renderSummaryCards() {
+  const { allDrivers, cashDrivers, zelleDriverRows, cashSummary } = latestReportData;
+
+  sumTotal.textContent = formatMoney(sumTotals(allDrivers));
+  sumDrivers.textContent = countLabel(allDrivers.length, 'driver');
+  sumCash.textContent = formatMoney(sumTotals(cashDrivers));
+  sumCashCount.textContent = countLabel(cashDrivers.length, 'driver');
+  sumZelle.textContent = formatMoney(sumTotals(zelleDriverRows));
+  sumZelleCount.textContent = countLabel(zelleDriverRows.length, 'driver');
+
+  if (cashSummary) {
+    sumKeep.textContent = formatMoney(cashSummary.cashToKeep);
+    sumKeepNote.textContent = `Weekly Gross ${formatMoney(cashSummary.weeklyGrossM41)} + Zelle`;
+  } else {
+    sumKeep.textContent = '—';
+    sumKeepNote.textContent = 'Not available';
+  }
+
+  rangeLabel.textContent = latestRange ? `${latestRange.fromDay} to ${latestRange.toDay}` : '';
 }
 
 function setStatus(text, type = 'neutral') {
@@ -215,7 +302,7 @@ function getRecoveryTip(code) {
     return 'Install Python dependencies: pip install -r requirements.txt';
   }
   if (code === 'WORKBOOK_MISSING') {
-    return 'Place Daily Sheet.xlsx in the project root or set PAYROLL_WORKBOOK_PATH.';
+    return 'Upload the workbook in step 1, or place Daily Sheet.xlsx in the project root.';
   }
   if (code === 'INPUT_INVALID') {
     return 'Choose valid weekdays and ensure From Day is before or equal to To Day.';
@@ -513,7 +600,10 @@ function applyReportData(data) {
     cashSummary: data.cashSummary || null
   };
   renderOverview(latestReportData.allDrivers);
+  renderSummaryCards();
+  setResultsVisible(Boolean(latestRange));
   updateReportButtonState();
+  updateStepper();
 }
 
 async function loadZelleDrivers() {
@@ -594,6 +684,7 @@ form.addEventListener('submit', async (event) => {
     renderRows(data.rows || []);
 
     await refreshReportData();
+    loadHistory();
 
     setStatus(
       `Done. ${data.rows.length} rows processed across ${latestReportData.allDrivers.length} drivers. Output: ${data.outputFile}`,
@@ -643,7 +734,10 @@ zelleExportButton.addEventListener('click', async () => {
   zelleExportButton.disabled = true;
 
   try {
-    const response = await fetch('/api/reports/zelle-export');
+    const exportUrl = viewingRunId
+      ? `/api/reports/zelle-export?runId=${encodeURIComponent(viewingRunId)}`
+      : '/api/reports/zelle-export';
+    const response = await fetch(exportUrl);
     if (!response.ok) {
       let errorMessage = 'Could not export Zelle report.';
       try {
@@ -687,5 +781,298 @@ cashKeepButton.addEventListener('click', () => {
   setStatus('Generating cash-to-keep report...', 'success');
 });
 
+// ---- Workbook status and upload ----
+
+function formatDateTime(isoText) {
+  const date = new Date(isoText);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+  return date.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes || 0);
+  if (value >= 1024 * 1024) {
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${Math.max(1, Math.round(value / 1024))} KB`;
+}
+
+function setWorkbookBadge(text, type) {
+  workbookBadge.textContent = text;
+  workbookBadge.className = `badge badge-${type}`;
+}
+
+function setWorkbookStatus(text, type = 'neutral') {
+  workbookStatusEl.textContent = text;
+  workbookStatusEl.className = `status ${type}`;
+}
+
+function renderWorkbook(workbook) {
+  workbookExists = Boolean(workbook && workbook.exists);
+  workbookReady = workbookExists && workbook.readable !== false;
+
+  if (!workbook || !workbook.exists) {
+    setWorkbookBadge('Missing', 'error');
+    workbookFile.textContent = workbook ? `${workbook.fileName} not found` : '—';
+    workbookModified.textContent = '—';
+    workbookDate.textContent = '—';
+    workbookSheets.textContent = '—';
+    updateStepper();
+    return;
+  }
+
+  workbookFile.textContent = `${workbook.fileName} (${formatFileSize(workbook.sizeBytes)})`;
+  workbookModified.textContent = formatDateTime(workbook.modifiedAt);
+  workbookDate.textContent = workbook.firstDate
+    ? `${workbook.firstDate.label} (${workbook.firstDate.sheetName})`
+    : '—';
+
+  if (workbook.readable === false || !workbook.sheets) {
+    setWorkbookBadge('Unreadable', 'error');
+    workbookSheets.textContent = 'Could not read the sheet list.';
+  } else {
+    const { present, missing } = workbook.sheets;
+    const total = present.length + missing.length;
+    if (missing.length === 0) {
+      setWorkbookBadge('Loaded', 'ok');
+      workbookSheets.textContent = `All ${total} found`;
+    } else {
+      setWorkbookBadge('Loaded, sheets missing', 'warn');
+      workbookSheets.textContent = `${present.length} of ${total} found. Missing: ${missing.join(', ')}`;
+    }
+  }
+
+  updateStepper();
+}
+
+async function loadWorkbookStatus() {
+  try {
+    const response = await fetch('/api/workbook');
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Could not read workbook status.');
+    }
+    renderWorkbook(data.workbook);
+  } catch (error) {
+    setWorkbookBadge('Unknown', 'neutral');
+    setWorkbookStatus(`Could not check the workbook: ${error.message}`, 'error');
+  }
+}
+
+async function uploadWorkbook(file) {
+  if (!file) {
+    return;
+  }
+
+  if (!/\.xlsx$/i.test(file.name)) {
+    setWorkbookStatus('Choose an .xlsx file.', 'error');
+    return;
+  }
+
+  const question = workbookExists
+    ? `Replace the current workbook with "${file.name}"?\n\nThe current workbook is backed up first.`
+    : `Use "${file.name}" as the workbook?`;
+  if (!window.confirm(question)) {
+    return;
+  }
+
+  workbookChooseButton.disabled = true;
+  setWorkbookStatus(`Uploading ${file.name}...`, 'neutral');
+
+  try {
+    const response = await fetch('/api/workbook', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream'
+      },
+      body: file
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Upload failed.');
+    }
+
+    clearResults();
+    setStatus('', 'neutral');
+    renderWorkbook(data.workbook);
+    setWorkbookStatus(
+      data.backupFile
+        ? `Workbook replaced with ${file.name}. Previous workbook saved as backups/${data.backupFile}.`
+        : `Workbook loaded from ${file.name}.`,
+      'success'
+    );
+  } catch (error) {
+    setWorkbookStatus(`Upload failed: ${error.message}`, 'error');
+  } finally {
+    workbookChooseButton.disabled = false;
+    workbookFileInput.value = '';
+  }
+}
+
+workbookChooseButton.addEventListener('click', () => workbookFileInput.click());
+workbookFileInput.addEventListener('change', () => uploadWorkbook(workbookFileInput.files[0]));
+
+['dragenter', 'dragover'].forEach((eventName) => {
+  workbookDropzone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    workbookDropzone.classList.add('is-dragging');
+  });
+});
+
+['dragleave', 'drop'].forEach((eventName) => {
+  workbookDropzone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    workbookDropzone.classList.remove('is-dragging');
+  });
+});
+
+workbookDropzone.addEventListener('drop', (event) => {
+  uploadWorkbook(event.dataTransfer?.files?.[0]);
+});
+
+// ---- Past runs ----
+
+function markActiveHistoryRow() {
+  Array.from(historyBody.querySelectorAll('tr')).forEach((row) => {
+    row.classList.toggle('is-active', Boolean(viewingRunId) && row.dataset.runId === viewingRunId);
+  });
+}
+
+function renderHistory(runs) {
+  historyBody.innerHTML = '';
+  const hasRuns = runs.length > 0;
+  historyEmpty.classList.toggle('hidden', hasRuns);
+  historyTableWrap.classList.toggle('hidden', !hasRuns);
+
+  runs.forEach((run) => {
+    const row = document.createElement('tr');
+    row.dataset.runId = run.id;
+
+    const dates = run.firstDay && run.lastDay && run.firstDay !== run.lastDay
+      ? `${run.firstDay} – ${run.lastDay}`
+      : (run.firstDay || '—');
+    const cells = [
+      formatDateTime(run.createdAt),
+      run.range ? `${run.range.fromDay} to ${run.range.toDay}` : '—',
+      dates,
+      String(run.driverCount),
+      formatMoney(run.totalAmount)
+    ];
+    cells.forEach((text) => {
+      const cell = document.createElement('td');
+      cell.textContent = text;
+      row.appendChild(cell);
+    });
+
+    const actions = document.createElement('td');
+    actions.className = 'row-actions';
+
+    const openButton = document.createElement('button');
+    openButton.type = 'button';
+    openButton.className = 'secondary small';
+    openButton.textContent = 'Open';
+    openButton.addEventListener('click', () => openSavedRun(run.id));
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'ghost small';
+    deleteButton.textContent = 'Delete';
+    deleteButton.addEventListener('click', () => deleteSavedRun(run));
+
+    actions.appendChild(openButton);
+    actions.appendChild(deleteButton);
+    row.appendChild(actions);
+    historyBody.appendChild(row);
+  });
+
+  markActiveHistoryRow();
+}
+
+async function loadHistory() {
+  try {
+    const response = await fetch('/api/history');
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Could not load saved runs.');
+    }
+    renderHistory(Array.isArray(data.runs) ? data.runs : []);
+  } catch (_error) {
+    renderHistory([]);
+  }
+}
+
+async function openSavedRun(runId) {
+  try {
+    const response = await fetch(`/api/history/${encodeURIComponent(runId)}`);
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Could not open the saved run.');
+    }
+
+    const run = data.run;
+    clearResults();
+
+    latestGroupedTotals = Array.isArray(run.groupedTotals) ? run.groupedTotals : [];
+    latestRange = run.range || null;
+    viewingRunId = run.id;
+
+    renderWarnings(run.warnings);
+    renderGroupedTotals(latestGroupedTotals);
+    renderRows(run.rows || []);
+
+    // Saved runs use the Zelle list and cash figures captured when the run was made.
+    const reportData = buildLocalReportData(latestGroupedTotals, run.zelleDrivers || []);
+    reportData.cashSummary = run.cashSummary || null;
+    applyReportData(reportData);
+
+    runBannerText.textContent = `Viewing saved run from ${formatDateTime(run.createdAt)}. Reports below use this saved data.`;
+    runBanner.classList.remove('hidden');
+    markActiveHistoryRow();
+    setStatus(`Opened saved run: ${(run.rows || []).length} rows across ${latestReportData.allDrivers.length} drivers.`, 'success');
+    runBanner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (error) {
+    setStatus(`Could not open saved run: ${error.message}`, 'error');
+  }
+}
+
+async function deleteSavedRun(run) {
+  if (!window.confirm(`Delete the saved run from ${formatDateTime(run.createdAt)}? This cannot be undone.`)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/history/${encodeURIComponent(run.id)}`, { method: 'DELETE' });
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Could not delete the saved run.');
+    }
+
+    if (viewingRunId === run.id) {
+      clearResults();
+      setStatus('Saved run deleted.', 'neutral');
+    }
+    await loadHistory();
+  } catch (error) {
+    setStatus(`Delete failed: ${error.message}`, 'error');
+  }
+}
+
+runBannerClose.addEventListener('click', () => {
+  clearResults();
+  setStatus('', 'neutral');
+});
+
 loadZelleDrivers();
 clearResults();
+loadWorkbookStatus();
+loadHistory();

@@ -7,6 +7,12 @@ const jsFiles = [
   'src/createApp.js',
   'src/config/constants.js',
   'src/routes/submitRoute.js',
+  'src/routes/workbookRoute.js',
+  'src/routes/historyRoute.js',
+  'src/routes/zelleReportRoute.js',
+  'src/services/workbookStore.js',
+  'src/services/historyStore.js',
+  'src/services/runSnapshot.js',
   'src/services/pythonRunner.js',
   'src/services/payrollResults.js',
   'src/validation/dayRange.js'
