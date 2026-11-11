@@ -3,8 +3,10 @@ const fsp = require('fs/promises');
 const path = require('path');
 const xlsx = require('xlsx');
 const { DAY_ORDER, DAY_SHEETS } = require('../config/constants');
+const { normalizeDriverName } = require('../utils/driverNames');
 
 const EXPECTED_SHEETS = DAY_ORDER.flatMap((day) => DAY_SHEETS[day]);
+const DRIVER_ROWS = Object.freeze({ min: 4, max: 47, column: 'C' });
 const XLSX_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 
 function backupTimestamp(now = new Date()) {
@@ -77,6 +79,33 @@ function getWorkbookStatus(workbookPath) {
   return status;
 }
 
+// Distinct driver names found in column C of the day sheets (same rows payroll reads).
+function listWorkbookDrivers(workbookPath) {
+  const workbook = xlsx.readFile(workbookPath, { sheetRows: DRIVER_ROWS.max });
+  const byKey = new Map();
+
+  EXPECTED_SHEETS.forEach((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
+      return;
+    }
+
+    for (let row = DRIVER_ROWS.min; row <= DRIVER_ROWS.max; row += 1) {
+      const value = sheet[`${DRIVER_ROWS.column}${row}`]?.v;
+      if (typeof value !== 'string' && typeof value !== 'number') {
+        continue;
+      }
+      const displayName = String(value).trim().replace(/\s+/g, ' ');
+      const key = normalizeDriverName(displayName);
+      if (key && !byKey.has(key)) {
+        byKey.set(key, displayName);
+      }
+    }
+  });
+
+  return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b));
+}
+
 function inspectWorkbookBuffer(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
     return { ok: false, message: 'No file was received.' };
@@ -142,7 +171,9 @@ async function replaceWorkbook(buffer, { workbookPath, backupDir }) {
 
 module.exports = {
   EXPECTED_SHEETS,
+  backupTimestamp,
   getWorkbookStatus,
+  listWorkbookDrivers,
   inspectWorkbookBuffer,
   replaceWorkbook
 };

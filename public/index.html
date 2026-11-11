@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Harbor View Payroll</title>
-  <link rel="stylesheet" href="/styles.css?v=20261110b" />
+  <link rel="stylesheet" href="/styles.css?v=20261110c" />
 </head>
 <body>
   <header class="topnav">
@@ -141,36 +141,34 @@
         <h2>Drivers</h2>
         <span class="subtext inline" id="range-label"></span>
       </div>
+      <div class="table-tools">
+        <input id="driver-search" type="search" placeholder="Search drivers" aria-label="Search drivers" />
+        <div class="segmented" id="driver-type-filter" role="group" aria-label="Filter by payment type">
+          <button type="button" data-type="all">All</button>
+          <button type="button" data-type="cash">Cash</button>
+          <button type="button" data-type="zelle">Zelle</button>
+        </div>
+        <label class="check-inline">
+          <input id="driver-expand-all" type="checkbox" />
+          Show all details
+        </label>
+      </div>
       <div class="table-wrap">
-        <table>
+        <table class="driver-table">
           <thead>
             <tr>
               <th>Rank</th>
-              <th>Driver</th>
-              <th>Type</th>
-              <th>Total Amount</th>
-              <th>Details</th>
+              <th><button type="button" class="sort-button" data-sort="name">Driver <span class="sort-arrow"></span></button></th>
+              <th><button type="button" class="sort-button" data-sort="type">Type <span class="sort-arrow"></span></button></th>
+              <th class="number"><button type="button" class="sort-button" data-sort="total">Total Amount <span class="sort-arrow"></span></button></th>
+              <th><button type="button" class="sort-button" data-sort="days">Details <span class="sort-arrow"></span></button></th>
             </tr>
           </thead>
           <tbody id="report-overview-body"></tbody>
         </table>
       </div>
-
-      <details class="fold">
-        <summary>Grouped totals (A–Z)</summary>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Driver</th>
-                <th>Total Amount</th>
-                <th>Details</th>
-              </tr>
-            </thead>
-            <tbody id="grouped-body"></tbody>
-          </table>
-        </div>
-      </details>
+      <p id="driver-empty" class="empty-note hidden">No drivers match the search or filter.</p>
+      <p id="driver-table-foot" class="table-foot"></p>
 
       <details class="fold">
         <summary>Extracted rows</summary>
@@ -215,6 +213,6 @@
     </section>
   </main>
 
-  <script src="/app.js?v=20261110b"></script>
+  <script src="/app.js?v=20261110c"></script>
 </body>
 </html>

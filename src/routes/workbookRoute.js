@@ -1,5 +1,10 @@
 const { APP_CONFIG, ERROR_CODES } = require('../config/constants');
-const { getWorkbookStatus, inspectWorkbookBuffer, replaceWorkbook } = require('../services/workbookStore');
+const {
+  getWorkbookStatus,
+  listWorkbookDrivers,
+  inspectWorkbookBuffer,
+  replaceWorkbook
+} = require('../services/workbookStore');
 const { log } = require('../utils/logger');
 
 function sendError(res, status, code, message, details) {
@@ -20,6 +25,24 @@ function createWorkbookStatusHandler() {
       });
     } catch (error) {
       return sendError(res, 500, ERROR_CODES.PROCESS_FAILED, 'Could not read workbook status.', error.message);
+    }
+  };
+}
+
+function createWorkbookDriversHandler() {
+  return function workbookDriversHandler(_req, res) {
+    try {
+      const status = getWorkbookStatus(APP_CONFIG.workbookPath);
+      if (!status.exists) {
+        return res.json({ ok: true, workbookFound: false, drivers: [] });
+      }
+      return res.json({
+        ok: true,
+        workbookFound: true,
+        drivers: listWorkbookDrivers(APP_CONFIG.workbookPath)
+      });
+    } catch (error) {
+      return sendError(res, 500, ERROR_CODES.PROCESS_FAILED, 'Could not read drivers from the workbook.', error.message);
     }
   };
 }
@@ -70,6 +93,7 @@ function workbookUploadErrorHandler(error, _req, res, _next) {
 
 module.exports = {
   createWorkbookStatusHandler,
+  createWorkbookDriversHandler,
   createWorkbookUploadHandler,
   workbookUploadErrorHandler
 };

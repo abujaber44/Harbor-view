@@ -1,7 +1,6 @@
 const form = document.getElementById('payroll-form');
 const statusEl = document.getElementById('status');
 const warningsEl = document.getElementById('warnings');
-const groupedBody = document.getElementById('grouped-body');
 const rowsBody = document.getElementById('rows-body');
 const submitButton = document.getElementById('submit-btn');
 const reportOverviewBody = document.getElementById('report-overview-body');
@@ -103,9 +102,8 @@ function buildLocalReportData(groupedTotals, zelleDrivers) {
 }
 
 function clearResults() {
-  groupedBody.innerHTML = '';
   rowsBody.innerHTML = '';
-  reportOverviewBody.innerHTML = '';
+  renderOverview([]);
   warningsEl.innerHTML = '';
   reportPreview.classList.add('hidden');
   reportTitle.textContent = 'Report';
@@ -190,46 +188,6 @@ function renderWarnings(warnings) {
   });
 }
 
-function renderGroupedTotals(groupedTotals) {
-  groupedBody.innerHTML = '';
-
-  groupedTotals.forEach((group) => {
-    const row = document.createElement('tr');
-
-    const nameCell = document.createElement('td');
-    nameCell.textContent = group.name;
-
-    const totalCell = document.createElement('td');
-    totalCell.textContent = formatMoney(group.totalAmount);
-
-    const detailCell = document.createElement('td');
-    detailCell.className = 'details';
-
-    group.pay.forEach((entry, index) => {
-      const line = document.createElement('div');
-      const pieces = [`${entry.day}: ${formatMoney(entry.amount)}`];
-      if (Number(entry.adj) !== 0) {
-        pieces.push(`adj ${formatSignedMoney(entry.adj)}`);
-      }
-      if (entry.notes) {
-        pieces.push(entry.notes);
-      }
-      line.textContent = pieces.join(' | ');
-      detailCell.appendChild(line);
-
-      if (index < group.pay.length - 1) {
-        const hr = document.createElement('hr');
-        detailCell.appendChild(hr);
-      }
-    });
-
-    row.appendChild(nameCell);
-    row.appendChild(totalCell);
-    row.appendChild(detailCell);
-    groupedBody.appendChild(row);
-  });
-}
-
 function renderRows(rows) {
   rowsBody.innerHTML = '';
 
@@ -248,14 +206,83 @@ function renderRows(rows) {
   });
 }
 
-function renderOverview(drivers) {
+const driverSearch = document.getElementById('driver-search');
+const driverTypeButtons = Array.from(document.querySelectorAll('#driver-type-filter button'));
+const driverExpandAll = document.getElementById('driver-expand-all');
+const driverSortButtons = Array.from(document.querySelectorAll('button[data-sort]'));
+const driverTableFoot = document.getElementById('driver-table-foot');
+const driverEmpty = document.getElementById('driver-empty');
+
+let rankedDrivers = [];
+const driverView = {
+  search: '',
+  type: 'all',
+  sortKey: 'total',
+  sortDir: 'desc',
+  expandAll: false,
+  expanded: new Set()
+};
+
+function compareDrivers(a, b) {
+  let result = 0;
+  if (driverView.sortKey === 'name') {
+    result = String(a.name || '').localeCompare(String(b.name || ''));
+  } else if (driverView.sortKey === 'type') {
+    result = Number(a.isZelle) - Number(b.isZelle);
+  } else if (driverView.sortKey === 'days') {
+    result = a.pay.length - b.pay.length;
+  } else {
+    result = Number(a.totalAmount || 0) - Number(b.totalAmount || 0);
+  }
+
+  if (result === 0) {
+    // Ties always fall back to payout rank so the order stays stable.
+    return a.rank - b.rank;
+  }
+  return driverView.sortDir === 'asc' ? result : -result;
+}
+
+function getVisibleDrivers() {
+  const query = normalizeDriverName(driverView.search);
+  return rankedDrivers
+    .filter((driver) => {
+      if (driverView.type === 'zelle' && !driver.isZelle) return false;
+      if (driverView.type === 'cash' && driver.isZelle) return false;
+      return !query || normalizeDriverName(driver.name).includes(query);
+    })
+    .sort(compareDrivers);
+}
+
+function buildDetailLines(driver) {
+  const container = document.createElement('div');
+  container.className = 'details';
+  driver.pay.forEach((entry, idx) => {
+    const line = document.createElement('div');
+    const parts = [`${entry.day}: ${formatMoney(entry.amount)}`];
+    if (Number(entry.adj) !== 0) {
+      parts.push(`adj ${formatSignedMoney(entry.adj)}`);
+    }
+    if (entry.notes) {
+      parts.push(entry.notes);
+    }
+    line.textContent = parts.join(' | ');
+    container.appendChild(line);
+    if (idx < driver.pay.length - 1) {
+      container.appendChild(document.createElement('hr'));
+    }
+  });
+  return container;
+}
+
+function renderDriverTable() {
+  const visible = getVisibleDrivers();
   reportOverviewBody.innerHTML = '';
 
-  drivers.forEach((driver, index) => {
+  visible.forEach((driver) => {
     const row = document.createElement('tr');
 
     const rankCell = document.createElement('td');
-    rankCell.textContent = String(index + 1);
+    rankCell.textContent = String(driver.rank);
 
     const nameCell = document.createElement('td');
     nameCell.textContent = driver.name;
@@ -266,36 +293,92 @@ function renderOverview(drivers) {
       : '<span class="pill pill-other">Cash</span>';
 
     const totalCell = document.createElement('td');
+    totalCell.className = 'number';
     totalCell.textContent = formatMoney(driver.totalAmount);
 
     const detailsCell = document.createElement('td');
-    detailsCell.className = 'details';
-    driver.pay.forEach((entry, idx) => {
-      const line = document.createElement('div');
-      const parts = [`${entry.day}: ${formatMoney(entry.amount)}`];
-      if (Number(entry.adj) !== 0) {
-        parts.push(`adj ${formatSignedMoney(entry.adj)}`);
+    const isOpen = driverView.expandAll || driverView.expanded.has(driver.name);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'link-button';
+    toggle.setAttribute('aria-expanded', String(isOpen));
+    toggle.textContent = `${isOpen ? '▾' : '▸'} ${driver.pay.length} ${driver.pay.length === 1 ? 'entry' : 'entries'}`;
+    toggle.disabled = driverView.expandAll;
+    toggle.addEventListener('click', () => {
+      if (driverView.expanded.has(driver.name)) {
+        driverView.expanded.delete(driver.name);
+      } else {
+        driverView.expanded.add(driver.name);
       }
-      if (entry.notes) {
-        parts.push(entry.notes);
-      }
-      line.textContent = parts.join(' | ');
-      detailsCell.appendChild(line);
-      if (idx < driver.pay.length - 1) {
-        const hr = document.createElement('hr');
-        detailsCell.appendChild(hr);
-      }
+      renderDriverTable();
     });
+    detailsCell.appendChild(toggle);
+    if (isOpen) {
+      detailsCell.appendChild(buildDetailLines(driver));
+    }
 
     row.appendChild(rankCell);
     row.appendChild(nameCell);
     row.appendChild(typeCell);
     row.appendChild(totalCell);
     row.appendChild(detailsCell);
-
     reportOverviewBody.appendChild(row);
   });
+
+  driverEmpty.classList.toggle('hidden', visible.length > 0 || rankedDrivers.length === 0);
+  driverTableFoot.textContent = rankedDrivers.length === 0
+    ? ''
+    : `Showing ${visible.length} of ${countLabel(rankedDrivers.length, 'driver')} · ${formatMoney(sumTotals(visible))}`;
+
+  driverSortButtons.forEach((button) => {
+    const active = button.dataset.sort === driverView.sortKey;
+    const th = button.closest('th');
+    th.setAttribute('aria-sort', active ? (driverView.sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+    button.querySelector('.sort-arrow').textContent = active ? (driverView.sortDir === 'asc' ? '▲' : '▼') : '';
+  });
+
+  driverTypeButtons.forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.type === driverView.type);
+    button.setAttribute('aria-pressed', String(button.dataset.type === driverView.type));
+  });
 }
+
+// Drivers arrive sorted by total (highest first); that order is the rank.
+function renderOverview(drivers) {
+  rankedDrivers = (drivers || []).map((driver, index) => ({ ...driver, rank: index + 1 }));
+  driverView.expanded.clear();
+  renderDriverTable();
+}
+
+driverSearch.addEventListener('input', () => {
+  driverView.search = driverSearch.value;
+  renderDriverTable();
+});
+
+driverTypeButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    driverView.type = button.dataset.type;
+    renderDriverTable();
+  });
+});
+
+driverExpandAll.addEventListener('change', () => {
+  driverView.expandAll = driverExpandAll.checked;
+  renderDriverTable();
+});
+
+driverSortButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const key = button.dataset.sort;
+    if (driverView.sortKey === key) {
+      driverView.sortDir = driverView.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      driverView.sortKey = key;
+      driverView.sortDir = key === 'name' ? 'asc' : 'desc';
+    }
+    renderDriverTable();
+  });
+});
 
 function getRecoveryTip(code) {
   if (code === 'DEPENDENCY_MISSING') {
@@ -680,7 +763,6 @@ form.addEventListener('submit', async (event) => {
     latestRange = data.range || null;
 
     renderWarnings(data.warnings);
-    renderGroupedTotals(latestGroupedTotals);
     renderRows(data.rows || []);
 
     await refreshReportData();
@@ -1027,7 +1109,6 @@ async function openSavedRun(runId) {
     viewingRunId = run.id;
 
     renderWarnings(run.warnings);
-    renderGroupedTotals(latestGroupedTotals);
     renderRows(run.rows || []);
 
     // Saved runs use the Zelle list and cash figures captured when the run was made.

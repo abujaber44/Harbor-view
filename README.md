@@ -155,6 +155,16 @@ Replaces the workbook. Send the `.xlsx` file as the raw request body with `Conte
 - The previous workbook is copied to `./backups` before it is replaced.
 - Size is limited by `PAYROLL_MAX_WORKBOOK_BYTES`.
 
+### `GET /api/workbook/drivers`
+
+Returns the distinct driver names found in column `C` (rows `4..47`) of the day sheets. The Zelle page uses it to show a checklist instead of free text.
+
+### `GET /api/backups`, `GET /api/backups/:name/diff`, `POST /api/backups/:name/restore`
+
+- List the workbook backups in `./backups` (newest first).
+- `diff` lists the cells in columns `M`, `N`, `O` (rows `4..47` of the day sheets) where the backup differs from the current workbook.
+- `restore` replaces the workbook with the backup. The current workbook is backed up first, so a restore can be undone.
+
 ### `GET /api/history`, `GET /api/history/:id`, `DELETE /api/history/:id`
 
 Every successful `POST /submit` is saved as a JSON file in `./history` (rows, grouped totals, warnings, plus the Zelle driver list and cash-to-keep figures at that moment). These endpoints list, return, and delete saved runs. `POST /submit` also returns the saved run's `historyId`.

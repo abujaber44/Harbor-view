@@ -213,3 +213,124 @@ test('history routes list, return, export and delete saved runs', async (t) => {
   const after = await (await fetch(`${ctx.baseUrl}/api/history`)).json();
   assert.deepEqual(after.runs.map((run) => run.id), [newer.id]);
 });
+
+function buildDayWorkbookBuffer(sheets) {
+  const workbook = xlsx.utils.book_new();
+  Object.entries(sheets).forEach(([sheetName, entries]) => {
+    const rows = Array.from({ length: 50 }, () => Array(15).fill(null));
+    rows[0][1] = '3/23/2026';
+    entries.forEach((entry) => {
+      const row = entry.row - 1;
+      rows[row][2] = entry.driver;
+      rows[row][12] = entry.cash ?? null;
+      rows[row][13] = entry.adj ?? null;
+      rows[row][14] = entry.notes ?? null;
+    });
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.aoa_to_sheet(rows), sheetName);
+  });
+  return xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+}
+
+test('workbook drivers endpoint lists distinct driver names from day sheets', async (t) => {
+  const ctx = await startApp(t);
+
+  const empty = await (await fetch(`${ctx.baseUrl}/api/workbook/drivers`)).json();
+  assert.deepEqual(empty, { ok: true, workbookFound: false, drivers: [] });
+
+  fs.writeFileSync(ctx.workbookPath, buildDayWorkbookBuffer({
+    'Mon AM': [
+      { row: 3, driver: 'Header Row' },
+      { row: 4, driver: 'Zed  Driver' },
+      { row: 5, driver: 'Amy' },
+      { row: 48, driver: 'Below Range' }
+    ],
+    'Tues PM': [
+      { row: 10, driver: 'amy ' },
+      { row: 47, driver: 'Bob' }
+    ],
+    'Weekly Gross': [{ row: 4, driver: 'Not A Day Sheet' }]
+  }));
+
+  const body = await (await fetch(`${ctx.baseUrl}/api/workbook/drivers`)).json();
+  assert.equal(body.workbookFound, true);
+  assert.deepEqual(body.drivers, ['Amy', 'Bob', 'Zed Driver']);
+});
+
+test('backups can be listed, compared with the workbook, and restored', async (t) => {
+  const ctx = await startApp(t);
+  const original = buildDayWorkbookBuffer({
+    'Mon AM': [
+      { row: 4, driver: 'Amy', cash: -50, adj: null, notes: null },
+      { row: 5, driver: 'Bob', cash: 20, adj: 30, notes: 'short' }
+    ]
+  });
+  const changed = buildDayWorkbookBuffer({
+    'Mon AM': [
+      { row: 4, driver: 'Amy', cash: -50, adj: -30, notes: 'Deducted $30 for 3/23' },
+      { row: 5, driver: 'Bob', cash: 50, adj: 0, notes: 'short' }
+    ]
+  });
+
+  const none = await (await fetch(`${ctx.baseUrl}/api/backups`)).json();
+  assert.deepEqual(none, { ok: true, backups: [] });
+
+  // Uploading the changed workbook over the original leaves the original as a backup.
+  await upload(ctx.baseUrl, original);
+  const replaced = await (await upload(ctx.baseUrl, changed)).json();
+  fs.writeFileSync(path.join(ctx.backupDir, 'notes.txt'), 'not a backup');
+
+  const list = await (await fetch(`${ctx.baseUrl}/api/backups`)).json();
+  assert.deepEqual(list.backups.map((backup) => backup.name), [replaced.backupFile]);
+  // The listed time comes from the timestamp in the file name.
+  const stamp = replaced.backupFile.match(/\.(\d{8})-(\d{6})/);
+  const listedAt = new Date(list.backups[0].createdAt);
+  const pad = (value) => String(value).padStart(2, '0');
+  assert.equal(
+    `${listedAt.getFullYear()}${pad(listedAt.getMonth() + 1)}${pad(listedAt.getDate())}`,
+    stamp[1]
+  );
+  assert.equal(`${pad(listedAt.getHours())}${pad(listedAt.getMinutes())}${pad(listedAt.getSeconds())}`, stamp[2]);
+
+  const name = encodeURIComponent(replaced.backupFile);
+  const diff = await (await fetch(`${ctx.baseUrl}/api/backups/${name}/diff`)).json();
+  assert.equal(diff.ok, true);
+  assert.equal(diff.total, 4);
+  assert.deepEqual(
+    diff.changes.map((change) => [change.driver, change.column, change.inBackup, change.inCurrent]),
+    [
+      ['Amy', 'N', '', -30],
+      ['Amy', 'O', '', 'Deducted $30 for 3/23'],
+      ['Bob', 'M', 20, 50],
+      ['Bob', 'N', 30, 0]
+    ]
+  );
+
+  const restored = await fetch(`${ctx.baseUrl}/api/backups/${name}/restore`, { method: 'POST' });
+  const restoredBody = await restored.json();
+  assert.equal(restored.status, 200);
+  assert.equal(restoredBody.restoredFrom, replaced.backupFile);
+  assert.deepEqual(fs.readFileSync(ctx.workbookPath), original);
+
+  // The workbook that was replaced by the restore is itself kept as a backup.
+  assert.notEqual(restoredBody.backupFile, replaced.backupFile);
+  assert.deepEqual(fs.readFileSync(path.join(ctx.backupDir, restoredBody.backupFile)), changed);
+
+  const after = await (await fetch(`${ctx.baseUrl}/api/backups/${name}/diff`)).json();
+  assert.equal(after.total, 0);
+});
+
+test('backup routes reject unsafe or unknown names', async (t) => {
+  const ctx = await startApp(t);
+  fs.writeFileSync(ctx.workbookPath, buildDayWorkbookBuffer({ 'Mon AM': [{ row: 4, driver: 'Amy' }] }));
+  const before = fs.readFileSync(ctx.workbookPath);
+
+  const traversal = await fetch(`${ctx.baseUrl}/api/backups/..%2FDaily%20Sheet.xlsx/restore`, { method: 'POST' });
+  assert.equal(traversal.status, 400);
+  const notXlsx = await fetch(`${ctx.baseUrl}/api/backups/notes.txt/diff`);
+  assert.equal(notXlsx.status, 400);
+  const missing = await fetch(`${ctx.baseUrl}/api/backups/missing.xlsx/restore`, { method: 'POST' });
+  assert.equal(missing.status, 404);
+
+  assert.deepEqual(fs.readFileSync(ctx.workbookPath), before);
+  assert.equal(fs.existsSync(ctx.backupDir), false);
+});

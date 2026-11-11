@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zelle Drivers | Harbor View Payroll</title>
-  <link rel="stylesheet" href="/styles.css?v=20261110b" />
+  <link rel="stylesheet" href="/styles.css?v=20261110c" />
 </head>
 <body>
   <header class="topnav">
@@ -24,10 +24,31 @@
       <p class="subtext">Maintain the driver list used for Zelle tags, Zelle reporting, and cash-to-keep.</p>
 
       <form id="zelle-form" class="stack-form">
-        <label for="zelle-drivers-input">Driver Names (one per line)</label>
-        <textarea id="zelle-drivers-input" rows="16" placeholder="Driver One&#10;Driver Two"></textarea>
+        <div class="table-tools">
+          <input id="zelle-search" type="search" placeholder="Search drivers" aria-label="Search drivers" />
+          <span id="zelle-count" class="subtext inline"></span>
+        </div>
+
+        <fieldset class="check-group">
+          <legend>Drivers in the current workbook</legend>
+          <p id="zelle-workbook-note" class="empty-note hidden"></p>
+          <div id="zelle-workbook-list" class="check-list"></div>
+        </fieldset>
+
+        <fieldset class="check-group check-group-warn hidden" id="zelle-other-group">
+          <legend>Saved names not in the current workbook</legend>
+          <p class="subtext">These may be drivers who did not work this week, or misspelled names. Untick any that should be removed.</p>
+          <div id="zelle-other-list" class="check-list"></div>
+        </fieldset>
+
+        <div class="add-row">
+          <input id="zelle-add-input" type="text" placeholder="Add a name that is not listed" aria-label="Add a driver name" />
+          <button id="zelle-add-btn" type="button" class="secondary">Add</button>
+        </div>
+
         <div class="action-row">
           <button id="save-zelle-btn" type="submit">Save Zelle Drivers</button>
+          <span id="zelle-dirty" class="subtext inline"></span>
         </div>
       </form>
 
@@ -35,6 +56,6 @@
     </section>
   </main>
 
-  <script src="/zelle.js?v=20260415a"></script>
+  <script src="/zelle.js?v=20261110c"></script>
 </body>
 </html>

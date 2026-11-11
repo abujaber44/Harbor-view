@@ -8,9 +8,15 @@ const { createSettlementHandler } = require('./routes/settlementRoute');
 const { createZelleExportHandler } = require('./routes/zelleReportRoute');
 const {
   createWorkbookStatusHandler,
+  createWorkbookDriversHandler,
   createWorkbookUploadHandler,
   workbookUploadErrorHandler
 } = require('./routes/workbookRoute');
+const {
+  createBackupListHandler,
+  createBackupDiffHandler,
+  createBackupRestoreHandler
+} = require('./routes/backupRoute');
 const {
   createHistoryListHandler,
   createHistoryGetHandler,
@@ -47,6 +53,12 @@ function createApp({ runtime }) {
     createWorkbookUploadHandler(),
     workbookUploadErrorHandler
   );
+
+  app.get('/api/workbook/drivers', createWorkbookDriversHandler());
+
+  app.get('/api/backups', createBackupListHandler());
+  app.get('/api/backups/:name/diff', createBackupDiffHandler());
+  app.post('/api/backups/:name/restore', createBackupRestoreHandler());
 
   app.get('/api/history', createHistoryListHandler());
   app.get('/api/history/:id', createHistoryGetHandler());

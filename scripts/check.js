@@ -9,6 +9,8 @@ const jsFiles = [
   'src/routes/submitRoute.js',
   'src/routes/workbookRoute.js',
   'src/routes/historyRoute.js',
+  'src/routes/backupRoute.js',
+  'src/services/backupStore.js',
   'src/routes/zelleReportRoute.js',
   'src/services/workbookStore.js',
   'src/services/historyStore.js',
