@@ -283,10 +283,201 @@ async function runApply() {
     latestRange = null;
     applyButton.disabled = true;
     setStatus(`Settlement pass applied for ${range.fromDay} to ${range.toDay}. Backup: ${data.backupFile || 'created'}.`, 'success');
+    loadBackups();
   } catch (error) {
     setStatus(error.message, 'error');
   } finally {
     setBusy(false);
+  }
+}
+
+// ---- Workbook backups: list, compare, restore ----
+
+const backupsBody = document.getElementById('backups-body');
+const backupsEmpty = document.getElementById('backups-empty');
+const backupsTableWrap = document.getElementById('backups-table-wrap');
+const backupsStatusEl = document.getElementById('backups-status');
+const backupDiffEl = document.getElementById('backup-diff');
+
+function setBackupsStatus(text, type = 'neutral') {
+  backupsStatusEl.textContent = text;
+  backupsStatusEl.className = `status ${type}`;
+}
+
+function formatBackupTime(isoText) {
+  const date = new Date(isoText);
+  if (Number.isNaN(date.getTime())) {
+    return '-';
+  }
+  return date.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function formatDiffValue(value) {
+  if (value === '' || value === null || value === undefined) {
+    return '(empty)';
+  }
+  return String(value);
+}
+
+function addCell(row, text, className) {
+  const cell = document.createElement('td');
+  cell.textContent = text;
+  if (className) {
+    cell.className = className;
+  }
+  row.appendChild(cell);
+  return cell;
+}
+
+function renderBackups(backups) {
+  backupsBody.innerHTML = '';
+  const hasBackups = backups.length > 0;
+  backupsEmpty.classList.toggle('hidden', hasBackups);
+  backupsTableWrap.classList.toggle('hidden', !hasBackups);
+
+  backups.forEach((backup) => {
+    const row = document.createElement('tr');
+    row.dataset.backupName = backup.name;
+    addCell(row, formatBackupTime(backup.createdAt));
+    addCell(row, backup.name);
+    addCell(row, `${Math.max(1, Math.round(Number(backup.sizeBytes || 0) / 1024))} KB`);
+
+    const actions = addCell(row, '', 'row-actions');
+
+    const compareButton = document.createElement('button');
+    compareButton.type = 'button';
+    compareButton.className = 'secondary small';
+    compareButton.textContent = 'Compare';
+    compareButton.addEventListener('click', () => compareBackup(backup));
+
+    const restoreButton = document.createElement('button');
+    restoreButton.type = 'button';
+    restoreButton.className = 'ghost small';
+    restoreButton.textContent = 'Restore';
+    restoreButton.addEventListener('click', () => restoreBackup(backup));
+
+    actions.appendChild(compareButton);
+    actions.appendChild(restoreButton);
+    backupsBody.appendChild(row);
+  });
+}
+
+async function loadBackups() {
+  try {
+    const response = await fetch('/api/backups');
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Could not list backups.');
+    }
+    renderBackups(Array.isArray(data.backups) ? data.backups : []);
+  } catch (error) {
+    renderBackups([]);
+    setBackupsStatus(`Could not load backups: ${error.message}`, 'error');
+  }
+}
+
+function renderBackupDiff(backup, diff) {
+  backupDiffEl.innerHTML = '';
+  backupDiffEl.classList.remove('hidden');
+
+  const heading = document.createElement('h3');
+  heading.textContent = `Compared with ${backup.name}`;
+  backupDiffEl.appendChild(heading);
+
+  const summary = document.createElement('p');
+  summary.className = 'subtext';
+  summary.textContent = diff.total === 0
+    ? 'No differences in cash in/out, adjustment, or notes. Restoring would not change those cells.'
+    : `${diff.total} cell(s) differ in cash in/out, adjustment, or notes. Restoring sets them back to the "In backup" value.${diff.truncated ? ` Showing the first ${diff.changes.length}.` : ''}`;
+  backupDiffEl.appendChild(summary);
+
+  if (diff.total === 0) {
+    return;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'table-wrap';
+  const table = document.createElement('table');
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Sheet</th>
+        <th>Row</th>
+        <th>Driver</th>
+        <th>Field</th>
+        <th>In backup</th>
+        <th>Now</th>
+      </tr>
+    </thead>
+  `;
+  const body = document.createElement('tbody');
+  diff.changes.forEach((change) => {
+    const row = document.createElement('tr');
+    addCell(row, change.sheetName);
+    addCell(row, String(change.row));
+    addCell(row, change.driver || '-');
+    addCell(row, change.field);
+    addCell(row, formatDiffValue(change.inBackup));
+    addCell(row, formatDiffValue(change.inCurrent));
+    body.appendChild(row);
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  backupDiffEl.appendChild(wrap);
+}
+
+async function compareBackup(backup) {
+  setBackupsStatus(`Comparing ${backup.name} with the current workbook...`, 'neutral');
+  try {
+    const response = await fetch(`/api/backups/${encodeURIComponent(backup.name)}/diff`);
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(`${data.message || 'Could not compare the backup.'} (${data.code || 'UNKNOWN'})`);
+    }
+    renderBackupDiff(backup, data);
+    setBackupsStatus(`Comparison ready for ${backup.name}.`, 'success');
+  } catch (error) {
+    setBackupsStatus(error.message, 'error');
+  }
+}
+
+async function restoreBackup(backup) {
+  const question = `Restore the workbook from ${backup.name}?\n\n`
+    + 'The whole workbook goes back to that version. The current workbook is backed up first, so this can be undone.';
+  if (!window.confirm(question)) {
+    return;
+  }
+
+  setBackupsStatus(`Restoring ${backup.name}...`, 'neutral');
+  try {
+    const response = await fetch(`/api/backups/${encodeURIComponent(backup.name)}/restore`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(`${data.message || 'Could not restore the backup.'} (${data.code || 'UNKNOWN'})`);
+    }
+
+    // Any preview on screen was computed from the workbook that was just replaced.
+    latestPreview = null;
+    latestRange = null;
+    applyButton.disabled = true;
+    clearPreview();
+    renderWarnings([]);
+    backupDiffEl.classList.add('hidden');
+    setStatus('Workbook restored. Generate a new preview before applying.', 'neutral');
+    setBackupsStatus(
+      `Workbook restored from ${backup.name}. The previous workbook was saved as ${data.backupFile || 'a new backup'}.`,
+      'success'
+    );
+    await loadBackups();
+  } catch (error) {
+    setBackupsStatus(error.message, 'error');
   }
 }
 
@@ -301,3 +492,4 @@ fromDaySelect.value = 'Monday';
 toDaySelect.value = 'Sunday';
 setStatus('Select a range and click Preview Settlement.', 'neutral');
 clearPreview();
+loadBackups();

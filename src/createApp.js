@@ -1,11 +1,29 @@
 const path = require('path');
 const express = require('express');
-const { DAY_ORDER } = require('./config/constants');
+const { APP_CONFIG, DAY_ORDER } = require('./config/constants');
 const { createSubmitHandler } = require('./routes/submitRoute');
 const { createZelleListHandler, createZelleSaveHandler } = require('./routes/zelleRoute');
 const { createSortedPayHandler } = require('./routes/sortedPayRoute');
 const { createSettlementHandler } = require('./routes/settlementRoute');
 const { createZelleExportHandler } = require('./routes/zelleReportRoute');
+const {
+  createWorkbookStatusHandler,
+  createWorkbookDriversHandler,
+  createWorkbookUploadHandler,
+  workbookUploadErrorHandler
+} = require('./routes/workbookRoute');
+const { createWorkbookChecksHandler, createDriverNtdHandler } = require('./routes/workbookChecksRoute');
+const { createPayrollExportHandler } = require('./routes/payrollExportRoute');
+const {
+  createBackupListHandler,
+  createBackupDiffHandler,
+  createBackupRestoreHandler
+} = require('./routes/backupRoute');
+const {
+  createHistoryListHandler,
+  createHistoryGetHandler,
+  createHistoryDeleteHandler
+} = require('./routes/historyRoute');
 
 function createApp({ runtime }) {
   const app = express();
@@ -30,12 +48,37 @@ function createApp({ runtime }) {
   app.post('/api/settlement/preview', createSettlementHandler({ runtime, apply: false }));
   app.post('/api/settlement/apply', createSettlementHandler({ runtime, apply: true }));
 
+  app.get('/api/workbook', createWorkbookStatusHandler());
+  app.post(
+    '/api/workbook',
+    express.raw({ type: 'application/octet-stream', limit: APP_CONFIG.maxWorkbookBytes }),
+    createWorkbookUploadHandler(),
+    workbookUploadErrorHandler
+  );
+
+  app.get('/api/workbook/drivers', createWorkbookDriversHandler());
+  app.get('/api/workbook/checks', createWorkbookChecksHandler());
+  app.get('/api/driver-ntd', createDriverNtdHandler());
+  app.get('/api/reports/payroll-export', createPayrollExportHandler());
+
+  app.get('/api/backups', createBackupListHandler());
+  app.get('/api/backups/:name/diff', createBackupDiffHandler());
+  app.post('/api/backups/:name/restore', createBackupRestoreHandler());
+
+  app.get('/api/history', createHistoryListHandler());
+  app.get('/api/history/:id', createHistoryGetHandler());
+  app.delete('/api/history/:id', createHistoryDeleteHandler());
+
   app.get('/', (_req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
   });
 
   app.get('/zelle', (_req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'zelle.html'));
+  });
+
+  app.get('/driver-lookup', (_req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'driver-lookup.html'));
   });
 
   app.get('/driver-ntd-summary', (_req, res) => {

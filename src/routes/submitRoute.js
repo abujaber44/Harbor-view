@@ -4,6 +4,7 @@ const { APP_CONFIG, ERROR_CODES } = require('../config/constants');
 const { validateDayRange } = require('../validation/dayRange');
 const { runPayrollPython } = require('../services/pythonRunner');
 const { parseOutputWorkbook } = require('../services/payrollResults');
+const { saveRunSnapshot } = require('../services/runSnapshot');
 const { log } = require('../utils/logger');
 
 function statusForCode(code) {
@@ -116,6 +117,14 @@ function createSubmitHandler({ runtime }) {
       outputFile: path.basename(APP_CONFIG.outputPath),
       warnings
     };
+
+    // Saving to history is best-effort and never changes the payroll result.
+    try {
+      const saved = await saveRunSnapshot(response);
+      response.historyId = saved.id;
+    } catch (error) {
+      log('error', 'payroll.history.save_failed', { message: error.message });
+    }
 
     log('info', 'payroll.run.success', {
       fromDay,

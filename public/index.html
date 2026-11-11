@@ -4,18 +4,60 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Harbor View Payroll</title>
-  <link rel="stylesheet" href="/styles.css?v=20260415c" />
+  <link rel="stylesheet" href="/styles.css?v=20261110d" />
 </head>
 <body>
-  <main class="page">
-    <section class="panel panel-hero">
-      <h1>Harbor View Payroll</h1>
-      <p class="subtext">Run payroll from <code>Daily Sheet.xlsx</code>, then generate reports from this same page.</p>
-      <div class="page-links">
-        <a class="link-chip" href="/zelle">Manage Zelle Drivers</a>
-        <a class="link-chip" href="/driver-ntd-summary">Settlement Pass</a>
-      </div>
+  <header class="topnav">
+    <div class="topnav-inner">
+      <a class="topnav-brand" href="/">Harbor View Payroll</a>
+      <nav class="topnav-links" aria-label="Main">
+        <a href="/" aria-current="page">Payroll</a>
+        <a href="/driver-ntd-summary">Settlement Pass</a>
+        <a href="/driver-lookup">Driver Lookup</a>
+        <a href="/zelle">Zelle Drivers</a>
+      </nav>
+    </div>
+  </header>
 
+  <main class="page">
+    <ol class="stepper" id="stepper" aria-label="Payroll steps">
+      <li data-step="workbook"><span class="step-dot">1</span><span class="step-label">Workbook</span></li>
+      <li data-step="range"><span class="step-dot">2</span><span class="step-label">Run payroll</span></li>
+      <li data-step="reports"><span class="step-dot">3</span><span class="step-label">Review and reports</span></li>
+    </ol>
+
+    <section class="panel panel-hero" id="workbook-panel">
+      <div class="panel-head">
+        <h2><span class="step-tag">1</span>Workbook</h2>
+        <span id="workbook-badge" class="badge badge-neutral">Checking…</span>
+      </div>
+      <div class="workbook-grid">
+        <dl class="workbook-facts" id="workbook-facts">
+          <div><dt>File</dt><dd id="workbook-file">—</dd></div>
+          <div><dt>Last modified</dt><dd id="workbook-modified">—</dd></div>
+          <div><dt>First sheet date</dt><dd id="workbook-date">—</dd></div>
+          <div><dt>Day sheets</dt><dd id="workbook-sheets">—</dd></div>
+        </dl>
+        <div class="dropzone" id="workbook-dropzone">
+          <p class="dropzone-title">Drop a new <code>.xlsx</code> here</p>
+          <p class="dropzone-sub">The current workbook is backed up before it is replaced.</p>
+          <button id="workbook-choose-btn" type="button" class="secondary">Choose File</button>
+          <input id="workbook-file-input" type="file" accept=".xlsx" hidden />
+        </div>
+      </div>
+      <div id="workbook-status" class="status hidden" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="panel panel-hero">
+      <div class="panel-head">
+        <h2><span class="step-tag">2</span>Run payroll</h2>
+      </div>
+      <div class="preset-row" id="range-presets" role="group" aria-label="Quick day ranges">
+        <span class="preset-label">Quick range</span>
+        <button type="button" class="chip" data-from="Monday" data-to="Friday">Mon – Fri</button>
+        <button type="button" class="chip" data-from="Monday" data-to="Sunday">Full week</button>
+        <button type="button" class="chip" data-from="Saturday" data-to="Sunday">Weekend</button>
+      </div>
       <form id="payroll-form" class="form-grid">
         <label>
           From Day
@@ -47,74 +89,58 @@
 
         <div class="action-stack">
           <button id="submit-btn" type="submit">Run Payroll</button>
+          <button id="check-btn" type="button" class="secondary">Check Workbook</button>
         </div>
       </form>
 
       <div id="status" class="status" role="status" aria-live="polite"></div>
       <ul id="warnings" class="warnings"></ul>
+
+      <details id="checks-panel" class="fold checks hidden">
+        <summary id="checks-summary">Workbook checks</summary>
+        <ul id="checks-list" class="checks-list"></ul>
+      </details>
     </section>
 
-    <section class="panel panel-table">
-      <h2>Report Center</h2>
-      <p class="subtext">Run payroll first, then generate reports.</p>
+    <section class="panel run-banner hidden" id="run-banner">
+      <p id="run-banner-text"></p>
+      <button id="run-banner-close" type="button" class="secondary small">Close Saved Run</button>
+    </section>
+
+    <section class="summary-cards needs-run hidden" id="summary-cards" aria-label="Run summary">
+      <div class="summary-card">
+        <span class="summary-label">Total payout</span>
+        <strong class="summary-value" id="sum-total">—</strong>
+        <span class="summary-note" id="sum-drivers"></span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Cash drivers</span>
+        <strong class="summary-value" id="sum-cash">—</strong>
+        <span class="summary-note" id="sum-cash-count"></span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Zelle drivers</span>
+        <strong class="summary-value" id="sum-zelle">—</strong>
+        <span class="summary-note" id="sum-zelle-count"></span>
+      </div>
+      <div class="summary-card summary-card-accent">
+        <span class="summary-label">Cash to keep</span>
+        <strong class="summary-value" id="sum-keep">—</strong>
+        <span class="summary-note" id="sum-keep-note"></span>
+      </div>
+    </section>
+
+    <section class="panel panel-table needs-run hidden">
+      <div class="panel-head">
+        <h2><span class="step-tag">3</span>Reports</h2>
+      </div>
       <div class="action-row action-wrap">
         <button id="all-slips-btn" type="button" class="secondary" disabled>Generate Pay Slips (All)</button>
         <button id="cash-slips-btn" type="button" class="secondary" disabled>Generate Cash Driver Slips</button>
         <button id="zelle-overview-btn" type="button" class="secondary" disabled>Show Zelle Overview</button>
         <button id="zelle-export-btn" type="button" class="secondary" disabled>Export Zelle Excel</button>
+        <button id="payroll-export-btn" type="button" class="secondary" disabled>Export Payroll Excel</button>
         <button id="cash-keep-btn" type="button" class="secondary" disabled>Generate Cash To Keep</button>
-      </div>
-    </section>
-
-    <section class="panel panel-table">
-      <h2>Sorted Driver Overview</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Driver</th>
-              <th>Type</th>
-              <th>Total Amount</th>
-              <th>Details</th>
-            </tr>
-          </thead>
-          <tbody id="report-overview-body"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel panel-table">
-      <h2>Grouped Totals</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Driver</th>
-              <th>Total Amount</th>
-              <th>Details</th>
-            </tr>
-          </thead>
-          <tbody id="grouped-body"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel panel-table">
-      <h2>Extracted Rows</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Day</th>
-              <th>Driver</th>
-              <th>Amount</th>
-              <th>Adj</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody id="rows-body"></tbody>
-        </table>
       </div>
     </section>
 
@@ -123,8 +149,84 @@
       <p id="report-period" class="subtext"></p>
       <div id="report-slips"></div>
     </section>
+
+    <section class="panel panel-table needs-run hidden">
+      <div class="panel-head">
+        <h2>Drivers</h2>
+        <span class="subtext inline" id="range-label"></span>
+      </div>
+      <div class="table-tools">
+        <input id="driver-search" type="search" placeholder="Search drivers" aria-label="Search drivers" />
+        <div class="segmented" id="driver-type-filter" role="group" aria-label="Filter by payment type">
+          <button type="button" data-type="all">All</button>
+          <button type="button" data-type="cash">Cash</button>
+          <button type="button" data-type="zelle">Zelle</button>
+        </div>
+        <label class="check-inline">
+          <input id="driver-expand-all" type="checkbox" />
+          Show all details
+        </label>
+      </div>
+      <div class="table-wrap">
+        <table class="driver-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th><button type="button" class="sort-button" data-sort="name">Driver <span class="sort-arrow"></span></button></th>
+              <th><button type="button" class="sort-button" data-sort="type">Type <span class="sort-arrow"></span></button></th>
+              <th class="number"><button type="button" class="sort-button" data-sort="total">Total Amount <span class="sort-arrow"></span></button></th>
+              <th><button type="button" class="sort-button" data-sort="days">Details <span class="sort-arrow"></span></button></th>
+            </tr>
+          </thead>
+          <tbody id="report-overview-body"></tbody>
+        </table>
+      </div>
+      <p id="driver-empty" class="empty-note hidden">No drivers match the search or filter.</p>
+      <p id="driver-table-foot" class="table-foot"></p>
+
+      <details class="fold">
+        <summary>Extracted rows</summary>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Day</th>
+                <th>Driver</th>
+                <th>Amount</th>
+                <th>Adj</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="rows-body"></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel panel-table" id="history-panel">
+      <div class="panel-head">
+        <h2>Past runs</h2>
+        <span class="subtext inline">Every payroll run is saved so you can reopen it and reprint reports.</span>
+      </div>
+      <p id="history-empty" class="empty-note">No saved runs yet. Run payroll to create the first one.</p>
+      <div class="table-wrap hidden" id="history-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Run at</th>
+              <th>Range</th>
+              <th>Dates</th>
+              <th>Drivers</th>
+              <th>Total</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
 
-  <script src="/app.js?v=20260415c"></script>
+  <script src="/app.js?v=20261110d"></script>
 </body>
 </html>

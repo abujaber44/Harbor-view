@@ -53,6 +53,8 @@ Open: [http://localhost:3004](http://localhost:3004)
 - `PAYROLL_WORKBOOK_PATH` (default `./Daily Sheet.xlsx`)
 - `PAYROLL_OUTPUT_PATH` (default `./output.xlsx`)
 - `PAYROLL_ZELLE_DRIVERS_PATH` (default `./zelle-drivers.json`)
+- `PAYROLL_BACKUP_DIR` (default `./backups`)
+- `PAYROLL_HISTORY_DIR` (default `history` folder next to the output file)
 - `PAYROLL_MAX_WORKBOOK_BYTES` (default `26214400`)
 - `PAYROLL_PYTHON_TIMEOUT_MS` (default `120000`)
 
@@ -69,7 +71,8 @@ Open: [http://localhost:3004](http://localhost:3004)
 
 - `/` Payroll home
 - `/zelle` Manage Zelle driver list
-- `/driver-ntd-summary` Settlement Pass preview/apply workflow
+- `/driver-ntd-summary` Settlement Pass preview/apply workflow, plus workbook backups (compare and restore)
+- `/driver-lookup` One driver's week: NTD, cash in/out, balance per day
 
 ## API Endpoints
 
@@ -140,6 +143,46 @@ Generates an Excel download (`.xlsx`) with:
 - Zelle drivers only
 - Sorted by total amount descending
 - Final `TOTAL` row
+
+### `GET /api/workbook`
+
+Returns the current workbook status: whether it exists, size, last-modified time, which expected day sheets are present or missing, and the date text in the first day sheet's `B1`.
+
+### `POST /api/workbook`
+
+Replaces the workbook. Send the `.xlsx` file as the raw request body with `Content-Type: application/octet-stream`.
+
+- The file must be a real `.xlsx` containing at least one expected day sheet.
+- The previous workbook is copied to `./backups` before it is replaced.
+- Size is limited by `PAYROLL_MAX_WORKBOOK_BYTES`.
+
+### `GET /api/workbook/drivers`
+
+Returns the distinct driver names found in column `C` (rows `4..47`) of the day sheets. The Zelle page uses it to show a checklist instead of free text.
+
+### `GET /api/workbook/checks`
+
+Read-only checks for the selected range (`?fromDay=&toDay=`, default whole week). Reports missing day sheets, cash in/out or adjustment cells that contain text, payouts with no driver name, driver names that look like the same person spelled two ways, and formulas that have no calculated value. It never changes the workbook or blocks a run.
+
+### `GET /api/driver-ntd`
+
+Returns each driver's week (NTD, cash in/out, balance per day). `?driver=` filters by name (case-insensitive contains). Used by the Driver Lookup page.
+
+### `GET /api/reports/payroll-export`
+
+Downloads the full payroll report as Excel with three sheets: `Summary`, `Drivers`, `Daily Rows`. Add `?runId=<id>` to export a saved run.
+
+### `GET /api/backups`, `GET /api/backups/:name/diff`, `POST /api/backups/:name/restore`
+
+- List the workbook backups in `./backups` (newest first).
+- `diff` lists the cells in columns `M`, `N`, `O` (rows `4..47` of the day sheets) where the backup differs from the current workbook.
+- `restore` replaces the workbook with the backup. The current workbook is backed up first, so a restore can be undone.
+
+### `GET /api/history`, `GET /api/history/:id`, `DELETE /api/history/:id`
+
+Every successful `POST /submit` is saved as a JSON file in `./history` (rows, grouped totals, warnings, plus the Zelle driver list and cash-to-keep figures at that moment). These endpoints list, return, and delete saved runs. `POST /submit` also returns the saved run's `historyId`.
+
+`GET /api/reports/zelle-export?runId=<id>` exports the Zelle report for a saved run instead of the latest output.
 
 ### `POST /api/settlement/preview`
 

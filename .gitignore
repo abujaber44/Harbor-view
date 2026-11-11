@@ -26,6 +26,8 @@ Daily Sheet.xlsx
 ~$*.xlsx
 output.xlsx
 zelle-drivers.json
+history/
+.claude/
 uploads/*
 !uploads/.gitkeep
 

@@ -126,4 +126,13 @@ test('POST /submit returns structured success payload', async (t) => {
   const driverOne = body.groupedTotals.find((group) => group.name === 'Driver One');
   assert.ok(driverOne);
   assert.equal(driverOne.totalAmount, 110);
+
+  // Each successful run is saved to history without changing the payroll result.
+  assert.match(body.historyId, /^\d{8}-\d{6}-[0-9a-f]{4}$/);
+  const saved = JSON.parse(
+    fs.readFileSync(path.join(tmpDir, 'history', `${body.historyId}.json`), 'utf8')
+  );
+  assert.deepEqual(saved.range, body.range);
+  assert.deepEqual(saved.rows, body.rows);
+  assert.deepEqual(saved.groupedTotals, body.groupedTotals);
 });

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Driver Lookup | Harbor View Payroll</title>
+  <link rel="stylesheet" href="/styles.css?v=20261110d" />
+</head>
+<body>
+  <header class="topnav">
+    <div class="topnav-inner">
+      <a class="topnav-brand" href="/">Harbor View Payroll</a>
+      <nav class="topnav-links" aria-label="Main">
+        <a href="/">Payroll</a>
+        <a href="/driver-ntd-summary">Settlement Pass</a>
+        <a href="/driver-lookup" aria-current="page">Driver Lookup</a>
+        <a href="/zelle">Zelle Drivers</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="panel panel-hero">
+      <h1>Driver Lookup</h1>
+      <p class="subtext">See one driver's week from the workbook: NTD, cash in/out, and the balance for each day. Nothing is changed.</p>
+
+      <form id="lookup-form" class="lookup-form">
+        <input id="lookup-input" type="search" list="lookup-drivers" placeholder="Driver name (leave empty for everyone)" aria-label="Driver name" autocomplete="off" />
+        <datalist id="lookup-drivers"></datalist>
+        <button id="lookup-btn" type="submit">Look Up</button>
+      </form>
+
+      <div id="lookup-status" class="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="panel panel-table hidden" id="lookup-results-panel">
+      <div class="panel-head">
+        <h2>Results</h2>
+        <span class="subtext inline" id="lookup-count"></span>
+      </div>
+      <div id="lookup-results" class="driver-summary-list"></div>
+    </section>
+  </main>
+
+  <script src="/driver-lookup.js?v=20261110d"></script>
+</body>
+</html>

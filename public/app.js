@@ -1,7 +1,6 @@
 const form = document.getElementById('payroll-form');
 const statusEl = document.getElementById('status');
 const warningsEl = document.getElementById('warnings');
-const groupedBody = document.getElementById('grouped-body');
 const rowsBody = document.getElementById('rows-body');
 const submitButton = document.getElementById('submit-btn');
 const reportOverviewBody = document.getElementById('report-overview-body');
@@ -11,12 +10,53 @@ const cashSlipsButton = document.getElementById('cash-slips-btn');
 const zelleOverviewButton = document.getElementById('zelle-overview-btn');
 const zelleExportButton = document.getElementById('zelle-export-btn');
 const cashKeepButton = document.getElementById('cash-keep-btn');
+const payrollExportButton = document.getElementById('payroll-export-btn');
+const checkButton = document.getElementById('check-btn');
+const checksPanel = document.getElementById('checks-panel');
+const checksSummary = document.getElementById('checks-summary');
+const checksList = document.getElementById('checks-list');
+const fromDaySelect = document.getElementById('fromDay');
+const toDaySelect = document.getElementById('toDay');
+const presetButtons = Array.from(document.querySelectorAll('#range-presets button'));
 
 const reportPreview = document.getElementById('report-preview');
 const reportTitle = document.getElementById('report-title');
 const reportPeriod = document.getElementById('report-period');
 const reportSlips = document.getElementById('report-slips');
 
+const needsRunSections = Array.from(document.querySelectorAll('.needs-run'));
+const stepperItems = Array.from(document.querySelectorAll('#stepper li'));
+const rangeLabel = document.getElementById('range-label');
+const runBanner = document.getElementById('run-banner');
+const runBannerText = document.getElementById('run-banner-text');
+const runBannerClose = document.getElementById('run-banner-close');
+
+const sumTotal = document.getElementById('sum-total');
+const sumDrivers = document.getElementById('sum-drivers');
+const sumCash = document.getElementById('sum-cash');
+const sumCashCount = document.getElementById('sum-cash-count');
+const sumZelle = document.getElementById('sum-zelle');
+const sumZelleCount = document.getElementById('sum-zelle-count');
+const sumKeep = document.getElementById('sum-keep');
+const sumKeepNote = document.getElementById('sum-keep-note');
+
+const workbookBadge = document.getElementById('workbook-badge');
+const workbookFile = document.getElementById('workbook-file');
+const workbookModified = document.getElementById('workbook-modified');
+const workbookDate = document.getElementById('workbook-date');
+const workbookSheets = document.getElementById('workbook-sheets');
+const workbookDropzone = document.getElementById('workbook-dropzone');
+const workbookChooseButton = document.getElementById('workbook-choose-btn');
+const workbookFileInput = document.getElementById('workbook-file-input');
+const workbookStatusEl = document.getElementById('workbook-status');
+
+const historyBody = document.getElementById('history-body');
+const historyEmpty = document.getElementById('history-empty');
+const historyTableWrap = document.getElementById('history-table-wrap');
+
+let workbookReady = false;
+let workbookExists = false;
+let viewingRunId = null;
 let latestRange = null;
 let latestGroupedTotals = [];
 let latestZelleDrivers = [];
@@ -70,9 +110,8 @@ function buildLocalReportData(groupedTotals, zelleDrivers) {
 }
 
 function clearResults() {
-  groupedBody.innerHTML = '';
   rowsBody.innerHTML = '';
-  reportOverviewBody.innerHTML = '';
+  renderOverview([]);
   warningsEl.innerHTML = '';
   reportPreview.classList.add('hidden');
   reportTitle.textContent = 'Report';
@@ -86,7 +125,61 @@ function clearResults() {
     zelleDriverRows: [],
     cashSummary: null
   };
+  viewingRunId = null;
+  runBanner.classList.add('hidden');
+  setResultsVisible(false);
   updateReportButtonState();
+  updateStepper();
+  markActiveHistoryRow();
+}
+
+function setResultsVisible(visible) {
+  needsRunSections.forEach((section) => section.classList.toggle('hidden', !visible));
+}
+
+function updateStepper() {
+  const hasRun = Boolean(latestRange);
+  const done = {
+    workbook: workbookReady,
+    range: hasRun,
+    reports: false
+  };
+  const current = !workbookReady ? 'workbook' : (hasRun ? 'reports' : 'range');
+
+  stepperItems.forEach((item) => {
+    const step = item.dataset.step;
+    item.classList.toggle('is-done', Boolean(done[step]));
+    item.classList.toggle('is-current', step === current);
+  });
+}
+
+function sumTotals(drivers) {
+  return (drivers || []).reduce((sum, driver) => sum + Number(driver.totalAmount || 0), 0);
+}
+
+function countLabel(count, noun) {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+function renderSummaryCards() {
+  const { allDrivers, cashDrivers, zelleDriverRows, cashSummary } = latestReportData;
+
+  sumTotal.textContent = formatMoney(sumTotals(allDrivers));
+  sumDrivers.textContent = countLabel(allDrivers.length, 'driver');
+  sumCash.textContent = formatMoney(sumTotals(cashDrivers));
+  sumCashCount.textContent = countLabel(cashDrivers.length, 'driver');
+  sumZelle.textContent = formatMoney(sumTotals(zelleDriverRows));
+  sumZelleCount.textContent = countLabel(zelleDriverRows.length, 'driver');
+
+  if (cashSummary) {
+    sumKeep.textContent = formatMoney(cashSummary.cashToKeep);
+    sumKeepNote.textContent = `Weekly Gross ${formatMoney(cashSummary.weeklyGrossM41)} + Zelle`;
+  } else {
+    sumKeep.textContent = '—';
+    sumKeepNote.textContent = 'Not available';
+  }
+
+  rangeLabel.textContent = latestRange ? `${latestRange.fromDay} to ${latestRange.toDay}` : '';
 }
 
 function setStatus(text, type = 'neutral') {
@@ -100,46 +193,6 @@ function renderWarnings(warnings) {
     const li = document.createElement('li');
     li.textContent = warning;
     warningsEl.appendChild(li);
-  });
-}
-
-function renderGroupedTotals(groupedTotals) {
-  groupedBody.innerHTML = '';
-
-  groupedTotals.forEach((group) => {
-    const row = document.createElement('tr');
-
-    const nameCell = document.createElement('td');
-    nameCell.textContent = group.name;
-
-    const totalCell = document.createElement('td');
-    totalCell.textContent = formatMoney(group.totalAmount);
-
-    const detailCell = document.createElement('td');
-    detailCell.className = 'details';
-
-    group.pay.forEach((entry, index) => {
-      const line = document.createElement('div');
-      const pieces = [`${entry.day}: ${formatMoney(entry.amount)}`];
-      if (Number(entry.adj) !== 0) {
-        pieces.push(`adj ${formatSignedMoney(entry.adj)}`);
-      }
-      if (entry.notes) {
-        pieces.push(entry.notes);
-      }
-      line.textContent = pieces.join(' | ');
-      detailCell.appendChild(line);
-
-      if (index < group.pay.length - 1) {
-        const hr = document.createElement('hr');
-        detailCell.appendChild(hr);
-      }
-    });
-
-    row.appendChild(nameCell);
-    row.appendChild(totalCell);
-    row.appendChild(detailCell);
-    groupedBody.appendChild(row);
   });
 }
 
@@ -161,14 +214,83 @@ function renderRows(rows) {
   });
 }
 
-function renderOverview(drivers) {
+const driverSearch = document.getElementById('driver-search');
+const driverTypeButtons = Array.from(document.querySelectorAll('#driver-type-filter button'));
+const driverExpandAll = document.getElementById('driver-expand-all');
+const driverSortButtons = Array.from(document.querySelectorAll('button[data-sort]'));
+const driverTableFoot = document.getElementById('driver-table-foot');
+const driverEmpty = document.getElementById('driver-empty');
+
+let rankedDrivers = [];
+const driverView = {
+  search: '',
+  type: 'all',
+  sortKey: 'total',
+  sortDir: 'desc',
+  expandAll: false,
+  expanded: new Set()
+};
+
+function compareDrivers(a, b) {
+  let result = 0;
+  if (driverView.sortKey === 'name') {
+    result = String(a.name || '').localeCompare(String(b.name || ''));
+  } else if (driverView.sortKey === 'type') {
+    result = Number(a.isZelle) - Number(b.isZelle);
+  } else if (driverView.sortKey === 'days') {
+    result = a.pay.length - b.pay.length;
+  } else {
+    result = Number(a.totalAmount || 0) - Number(b.totalAmount || 0);
+  }
+
+  if (result === 0) {
+    // Ties always fall back to payout rank so the order stays stable.
+    return a.rank - b.rank;
+  }
+  return driverView.sortDir === 'asc' ? result : -result;
+}
+
+function getVisibleDrivers() {
+  const query = normalizeDriverName(driverView.search);
+  return rankedDrivers
+    .filter((driver) => {
+      if (driverView.type === 'zelle' && !driver.isZelle) return false;
+      if (driverView.type === 'cash' && driver.isZelle) return false;
+      return !query || normalizeDriverName(driver.name).includes(query);
+    })
+    .sort(compareDrivers);
+}
+
+function buildDetailLines(driver) {
+  const container = document.createElement('div');
+  container.className = 'details';
+  driver.pay.forEach((entry, idx) => {
+    const line = document.createElement('div');
+    const parts = [`${entry.day}: ${formatMoney(entry.amount)}`];
+    if (Number(entry.adj) !== 0) {
+      parts.push(`adj ${formatSignedMoney(entry.adj)}`);
+    }
+    if (entry.notes) {
+      parts.push(entry.notes);
+    }
+    line.textContent = parts.join(' | ');
+    container.appendChild(line);
+    if (idx < driver.pay.length - 1) {
+      container.appendChild(document.createElement('hr'));
+    }
+  });
+  return container;
+}
+
+function renderDriverTable() {
+  const visible = getVisibleDrivers();
   reportOverviewBody.innerHTML = '';
 
-  drivers.forEach((driver, index) => {
+  visible.forEach((driver) => {
     const row = document.createElement('tr');
 
     const rankCell = document.createElement('td');
-    rankCell.textContent = String(index + 1);
+    rankCell.textContent = String(driver.rank);
 
     const nameCell = document.createElement('td');
     nameCell.textContent = driver.name;
@@ -179,43 +301,99 @@ function renderOverview(drivers) {
       : '<span class="pill pill-other">Cash</span>';
 
     const totalCell = document.createElement('td');
+    totalCell.className = 'number';
     totalCell.textContent = formatMoney(driver.totalAmount);
 
     const detailsCell = document.createElement('td');
-    detailsCell.className = 'details';
-    driver.pay.forEach((entry, idx) => {
-      const line = document.createElement('div');
-      const parts = [`${entry.day}: ${formatMoney(entry.amount)}`];
-      if (Number(entry.adj) !== 0) {
-        parts.push(`adj ${formatSignedMoney(entry.adj)}`);
+    const isOpen = driverView.expandAll || driverView.expanded.has(driver.name);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'link-button';
+    toggle.setAttribute('aria-expanded', String(isOpen));
+    toggle.textContent = `${isOpen ? '▾' : '▸'} ${driver.pay.length} ${driver.pay.length === 1 ? 'entry' : 'entries'}`;
+    toggle.disabled = driverView.expandAll;
+    toggle.addEventListener('click', () => {
+      if (driverView.expanded.has(driver.name)) {
+        driverView.expanded.delete(driver.name);
+      } else {
+        driverView.expanded.add(driver.name);
       }
-      if (entry.notes) {
-        parts.push(entry.notes);
-      }
-      line.textContent = parts.join(' | ');
-      detailsCell.appendChild(line);
-      if (idx < driver.pay.length - 1) {
-        const hr = document.createElement('hr');
-        detailsCell.appendChild(hr);
-      }
+      renderDriverTable();
     });
+    detailsCell.appendChild(toggle);
+    if (isOpen) {
+      detailsCell.appendChild(buildDetailLines(driver));
+    }
 
     row.appendChild(rankCell);
     row.appendChild(nameCell);
     row.appendChild(typeCell);
     row.appendChild(totalCell);
     row.appendChild(detailsCell);
-
     reportOverviewBody.appendChild(row);
   });
+
+  driverEmpty.classList.toggle('hidden', visible.length > 0 || rankedDrivers.length === 0);
+  driverTableFoot.textContent = rankedDrivers.length === 0
+    ? ''
+    : `Showing ${visible.length} of ${countLabel(rankedDrivers.length, 'driver')} · ${formatMoney(sumTotals(visible))}`;
+
+  driverSortButtons.forEach((button) => {
+    const active = button.dataset.sort === driverView.sortKey;
+    const th = button.closest('th');
+    th.setAttribute('aria-sort', active ? (driverView.sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+    button.querySelector('.sort-arrow').textContent = active ? (driverView.sortDir === 'asc' ? '▲' : '▼') : '';
+  });
+
+  driverTypeButtons.forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.type === driverView.type);
+    button.setAttribute('aria-pressed', String(button.dataset.type === driverView.type));
+  });
 }
+
+// Drivers arrive sorted by total (highest first); that order is the rank.
+function renderOverview(drivers) {
+  rankedDrivers = (drivers || []).map((driver, index) => ({ ...driver, rank: index + 1 }));
+  driverView.expanded.clear();
+  renderDriverTable();
+}
+
+driverSearch.addEventListener('input', () => {
+  driverView.search = driverSearch.value;
+  renderDriverTable();
+});
+
+driverTypeButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    driverView.type = button.dataset.type;
+    renderDriverTable();
+  });
+});
+
+driverExpandAll.addEventListener('change', () => {
+  driverView.expandAll = driverExpandAll.checked;
+  renderDriverTable();
+});
+
+driverSortButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const key = button.dataset.sort;
+    if (driverView.sortKey === key) {
+      driverView.sortDir = driverView.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      driverView.sortKey = key;
+      driverView.sortDir = key === 'name' ? 'asc' : 'desc';
+    }
+    renderDriverTable();
+  });
+});
 
 function getRecoveryTip(code) {
   if (code === 'DEPENDENCY_MISSING') {
     return 'Install Python dependencies: pip install -r requirements.txt';
   }
   if (code === 'WORKBOOK_MISSING') {
-    return 'Place Daily Sheet.xlsx in the project root or set PAYROLL_WORKBOOK_PATH.';
+    return 'Upload the workbook in step 1, or place Daily Sheet.xlsx in the project root.';
   }
   if (code === 'INPUT_INVALID') {
     return 'Choose valid weekdays and ensure From Day is before or equal to To Day.';
@@ -503,6 +681,7 @@ function updateReportButtonState() {
   zelleOverviewButton.disabled = !hasRun || zelleCount === 0;
   zelleExportButton.disabled = !hasRun || zelleCount === 0;
   cashKeepButton.disabled = !hasRun || !latestReportData.cashSummary;
+  payrollExportButton.disabled = !hasRun || allCount === 0;
 }
 
 function applyReportData(data) {
@@ -513,7 +692,10 @@ function applyReportData(data) {
     cashSummary: data.cashSummary || null
   };
   renderOverview(latestReportData.allDrivers);
+  renderSummaryCards();
+  setResultsVisible(Boolean(latestRange));
   updateReportButtonState();
+  updateStepper();
 }
 
 async function loadZelleDrivers() {
@@ -566,7 +748,10 @@ form.addEventListener('submit', async (event) => {
   };
 
   submitButton.disabled = true;
+  submitButton.classList.add('is-busy');
   setStatus('Running payroll...', 'neutral');
+  rememberRange(payload.fromDay, payload.toDay);
+  runWorkbookChecks(payload.fromDay, payload.toDay);
 
   try {
     const response = await fetch('/submit', {
@@ -590,10 +775,10 @@ form.addEventListener('submit', async (event) => {
     latestRange = data.range || null;
 
     renderWarnings(data.warnings);
-    renderGroupedTotals(latestGroupedTotals);
     renderRows(data.rows || []);
 
     await refreshReportData();
+    loadHistory();
 
     setStatus(
       `Done. ${data.rows.length} rows processed across ${latestReportData.allDrivers.length} drivers. Output: ${data.outputFile}`,
@@ -603,6 +788,7 @@ form.addEventListener('submit', async (event) => {
     setStatus(`Request failed: ${error.message}`, 'error');
   } finally {
     submitButton.disabled = false;
+    submitButton.classList.remove('is-busy');
   }
 });
 
@@ -643,7 +829,10 @@ zelleExportButton.addEventListener('click', async () => {
   zelleExportButton.disabled = true;
 
   try {
-    const response = await fetch('/api/reports/zelle-export');
+    const exportUrl = viewingRunId
+      ? `/api/reports/zelle-export?runId=${encodeURIComponent(viewingRunId)}`
+      : '/api/reports/zelle-export';
+    const response = await fetch(exportUrl);
     if (!response.ok) {
       let errorMessage = 'Could not export Zelle report.';
       try {
@@ -677,6 +866,50 @@ zelleExportButton.addEventListener('click', async () => {
   }
 });
 
+payrollExportButton.addEventListener('click', async () => {
+  setStatus('Generating payroll Excel export...', 'neutral');
+  payrollExportButton.disabled = true;
+  payrollExportButton.classList.add('is-busy');
+
+  try {
+    const exportUrl = viewingRunId
+      ? `/api/reports/payroll-export?runId=${encodeURIComponent(viewingRunId)}`
+      : '/api/reports/payroll-export';
+    const response = await fetch(exportUrl);
+    if (!response.ok) {
+      let errorMessage = 'Could not export payroll report.';
+      try {
+        const data = await response.json();
+        errorMessage = `${data.message || errorMessage} (${data.code || 'UNKNOWN'})`;
+      } catch (_error) {
+        // Keep the generic message.
+      }
+      throw new Error(errorMessage);
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="([^"]+)"/i);
+    const fileName = match ? match[1] : 'payroll-report.xlsx';
+
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+
+    setStatus(`Payroll report exported: ${fileName}`, 'success');
+  } catch (error) {
+    setStatus(`Payroll export failed: ${error.message}`, 'error');
+  } finally {
+    payrollExportButton.classList.remove('is-busy');
+    updateReportButtonState();
+  }
+});
+
 cashKeepButton.addEventListener('click', () => {
   if (!latestReportData.cashSummary) {
     setStatus('Cash-to-keep summary is not available yet.', 'error');
@@ -687,5 +920,421 @@ cashKeepButton.addEventListener('click', () => {
   setStatus('Generating cash-to-keep report...', 'success');
 });
 
+// ---- Day range presets and remembered range ----
+
+const RANGE_STORAGE_KEY = 'harborView.lastRange';
+
+function rememberRange(fromDay, toDay) {
+  try {
+    localStorage.setItem(RANGE_STORAGE_KEY, JSON.stringify({ fromDay, toDay }));
+  } catch (_error) {
+    // Storage can be unavailable (private windows); the range is simply not remembered.
+  }
+}
+
+function hasOption(select, value) {
+  return Array.from(select.options).some((option) => option.value === value && value !== '');
+}
+
+function setRange(fromDay, toDay) {
+  if (hasOption(fromDaySelect, fromDay) && hasOption(toDaySelect, toDay)) {
+    fromDaySelect.value = fromDay;
+    toDaySelect.value = toDay;
+  }
+  updatePresetState();
+}
+
+function updatePresetState() {
+  presetButtons.forEach((button) => {
+    const active = button.dataset.from === fromDaySelect.value && button.dataset.to === toDaySelect.value;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function restoreRememberedRange() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RANGE_STORAGE_KEY) || 'null');
+    if (saved) {
+      setRange(saved.fromDay, saved.toDay);
+    }
+  } catch (_error) {
+    // Ignore unreadable saved values.
+  }
+}
+
+presetButtons.forEach((button) => {
+  button.addEventListener('click', () => setRange(button.dataset.from, button.dataset.to));
+});
+fromDaySelect.addEventListener('change', updatePresetState);
+toDaySelect.addEventListener('change', updatePresetState);
+
+// ---- Workbook checks (read-only; never block a run) ----
+
+function renderChecks(result) {
+  checksList.innerHTML = '';
+  checksPanel.classList.remove('hidden');
+
+  const range = `${result.fromDay} to ${result.toDay}`;
+  const total = result.errorCount + result.warningCount;
+  checksPanel.classList.toggle('has-errors', result.errorCount > 0);
+  checksPanel.classList.toggle('has-warnings', result.errorCount === 0 && result.warningCount > 0);
+
+  if (total === 0) {
+    checksSummary.textContent = `Workbook checks: no problems found (${range}, ${result.driverCount} drivers)`;
+    checksPanel.open = false;
+    const item = document.createElement('li');
+    item.textContent = 'All day sheets are present, amounts are numbers, and no driver names look misspelled.';
+    checksList.appendChild(item);
+    return;
+  }
+
+  checksSummary.textContent = `Workbook checks: ${total} thing${total === 1 ? '' : 's'} to look at (${range})`;
+  checksPanel.open = true;
+  result.issues.forEach((issue) => {
+    const item = document.createElement('li');
+    item.className = `check-${issue.severity}`;
+    item.textContent = issue.message;
+    checksList.appendChild(item);
+  });
+  if (result.truncated) {
+    const item = document.createElement('li');
+    item.textContent = `Only the first ${result.issues.length} are shown.`;
+    checksList.appendChild(item);
+  }
+}
+
+async function runWorkbookChecks(fromDay, toDay) {
+  const params = new URLSearchParams();
+  if (fromDay && toDay) {
+    params.set('fromDay', fromDay);
+    params.set('toDay', toDay);
+  }
+
+  try {
+    const response = await fetch(`/api/workbook/checks?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Could not check the workbook.');
+    }
+    renderChecks(data);
+    return true;
+  } catch (error) {
+    checksList.innerHTML = '';
+    checksPanel.classList.remove('hidden', 'has-warnings');
+    checksPanel.classList.add('has-errors');
+    checksPanel.open = true;
+    checksSummary.textContent = 'Workbook checks could not run';
+    const item = document.createElement('li');
+    item.className = 'check-error';
+    item.textContent = error.message;
+    checksList.appendChild(item);
+    return false;
+  }
+}
+
+checkButton.addEventListener('click', async () => {
+  checkButton.disabled = true;
+  checkButton.classList.add('is-busy');
+  await runWorkbookChecks(fromDaySelect.value, toDaySelect.value);
+  checkButton.disabled = false;
+  checkButton.classList.remove('is-busy');
+});
+
+// ---- Workbook status and upload ----
+
+function formatDateTime(isoText) {
+  const date = new Date(isoText);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+  return date.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes || 0);
+  if (value >= 1024 * 1024) {
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${Math.max(1, Math.round(value / 1024))} KB`;
+}
+
+function setWorkbookBadge(text, type) {
+  workbookBadge.textContent = text;
+  workbookBadge.className = `badge badge-${type}`;
+}
+
+function setWorkbookStatus(text, type = 'neutral') {
+  workbookStatusEl.textContent = text;
+  workbookStatusEl.className = `status ${type}`;
+}
+
+function renderWorkbook(workbook) {
+  workbookExists = Boolean(workbook && workbook.exists);
+  workbookReady = workbookExists && workbook.readable !== false;
+
+  if (!workbook || !workbook.exists) {
+    setWorkbookBadge('Missing', 'error');
+    workbookFile.textContent = workbook ? `${workbook.fileName} not found` : '—';
+    workbookModified.textContent = '—';
+    workbookDate.textContent = '—';
+    workbookSheets.textContent = '—';
+    updateStepper();
+    return;
+  }
+
+  workbookFile.textContent = `${workbook.fileName} (${formatFileSize(workbook.sizeBytes)})`;
+  workbookModified.textContent = formatDateTime(workbook.modifiedAt);
+  workbookDate.textContent = workbook.firstDate
+    ? `${workbook.firstDate.label} (${workbook.firstDate.sheetName})`
+    : '—';
+
+  if (workbook.readable === false || !workbook.sheets) {
+    setWorkbookBadge('Unreadable', 'error');
+    workbookSheets.textContent = 'Could not read the sheet list.';
+  } else {
+    const { present, missing } = workbook.sheets;
+    const total = present.length + missing.length;
+    if (missing.length === 0) {
+      setWorkbookBadge('Loaded', 'ok');
+      workbookSheets.textContent = `All ${total} found`;
+    } else {
+      setWorkbookBadge('Loaded, sheets missing', 'warn');
+      workbookSheets.textContent = `${present.length} of ${total} found. Missing: ${missing.join(', ')}`;
+    }
+  }
+
+  updateStepper();
+}
+
+async function loadWorkbookStatus() {
+  try {
+    const response = await fetch('/api/workbook');
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Could not read workbook status.');
+    }
+    renderWorkbook(data.workbook);
+  } catch (error) {
+    setWorkbookBadge('Unknown', 'neutral');
+    setWorkbookStatus(`Could not check the workbook: ${error.message}`, 'error');
+  }
+}
+
+async function uploadWorkbook(file) {
+  if (!file) {
+    return;
+  }
+
+  if (!/\.xlsx$/i.test(file.name)) {
+    setWorkbookStatus('Choose an .xlsx file.', 'error');
+    return;
+  }
+
+  const question = workbookExists
+    ? `Replace the current workbook with "${file.name}"?\n\nThe current workbook is backed up first.`
+    : `Use "${file.name}" as the workbook?`;
+  if (!window.confirm(question)) {
+    return;
+  }
+
+  workbookChooseButton.disabled = true;
+  setWorkbookStatus(`Uploading ${file.name}...`, 'neutral');
+
+  try {
+    const response = await fetch('/api/workbook', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream'
+      },
+      body: file
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Upload failed.');
+    }
+
+    clearResults();
+    setStatus('', 'neutral');
+    checksPanel.classList.add('hidden');
+    renderWorkbook(data.workbook);
+    setWorkbookStatus(
+      data.backupFile
+        ? `Workbook replaced with ${file.name}. Previous workbook saved as backups/${data.backupFile}.`
+        : `Workbook loaded from ${file.name}.`,
+      'success'
+    );
+  } catch (error) {
+    setWorkbookStatus(`Upload failed: ${error.message}`, 'error');
+  } finally {
+    workbookChooseButton.disabled = false;
+    workbookFileInput.value = '';
+  }
+}
+
+workbookChooseButton.addEventListener('click', () => workbookFileInput.click());
+workbookFileInput.addEventListener('change', () => uploadWorkbook(workbookFileInput.files[0]));
+
+['dragenter', 'dragover'].forEach((eventName) => {
+  workbookDropzone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    workbookDropzone.classList.add('is-dragging');
+  });
+});
+
+['dragleave', 'drop'].forEach((eventName) => {
+  workbookDropzone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    workbookDropzone.classList.remove('is-dragging');
+  });
+});
+
+workbookDropzone.addEventListener('drop', (event) => {
+  uploadWorkbook(event.dataTransfer?.files?.[0]);
+});
+
+// ---- Past runs ----
+
+function markActiveHistoryRow() {
+  Array.from(historyBody.querySelectorAll('tr')).forEach((row) => {
+    row.classList.toggle('is-active', Boolean(viewingRunId) && row.dataset.runId === viewingRunId);
+  });
+}
+
+function renderHistory(runs) {
+  historyBody.innerHTML = '';
+  const hasRuns = runs.length > 0;
+  historyEmpty.classList.toggle('hidden', hasRuns);
+  historyTableWrap.classList.toggle('hidden', !hasRuns);
+
+  runs.forEach((run) => {
+    const row = document.createElement('tr');
+    row.dataset.runId = run.id;
+
+    const dates = run.firstDay && run.lastDay && run.firstDay !== run.lastDay
+      ? `${run.firstDay} – ${run.lastDay}`
+      : (run.firstDay || '—');
+    const cells = [
+      formatDateTime(run.createdAt),
+      run.range ? `${run.range.fromDay} to ${run.range.toDay}` : '—',
+      dates,
+      String(run.driverCount),
+      formatMoney(run.totalAmount)
+    ];
+    cells.forEach((text) => {
+      const cell = document.createElement('td');
+      cell.textContent = text;
+      row.appendChild(cell);
+    });
+
+    const actions = document.createElement('td');
+    actions.className = 'row-actions';
+
+    const openButton = document.createElement('button');
+    openButton.type = 'button';
+    openButton.className = 'secondary small';
+    openButton.textContent = 'Open';
+    openButton.addEventListener('click', () => openSavedRun(run.id));
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'ghost small';
+    deleteButton.textContent = 'Delete';
+    deleteButton.addEventListener('click', () => deleteSavedRun(run));
+
+    actions.appendChild(openButton);
+    actions.appendChild(deleteButton);
+    row.appendChild(actions);
+    historyBody.appendChild(row);
+  });
+
+  markActiveHistoryRow();
+}
+
+async function loadHistory() {
+  try {
+    const response = await fetch('/api/history');
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Could not load saved runs.');
+    }
+    renderHistory(Array.isArray(data.runs) ? data.runs : []);
+  } catch (_error) {
+    renderHistory([]);
+  }
+}
+
+async function openSavedRun(runId) {
+  try {
+    const response = await fetch(`/api/history/${encodeURIComponent(runId)}`);
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Could not open the saved run.');
+    }
+
+    const run = data.run;
+    clearResults();
+
+    latestGroupedTotals = Array.isArray(run.groupedTotals) ? run.groupedTotals : [];
+    latestRange = run.range || null;
+    viewingRunId = run.id;
+
+    renderWarnings(run.warnings);
+    renderRows(run.rows || []);
+
+    // Saved runs use the Zelle list and cash figures captured when the run was made.
+    const reportData = buildLocalReportData(latestGroupedTotals, run.zelleDrivers || []);
+    reportData.cashSummary = run.cashSummary || null;
+    applyReportData(reportData);
+
+    runBannerText.textContent = `Viewing saved run from ${formatDateTime(run.createdAt)}. Reports below use this saved data.`;
+    runBanner.classList.remove('hidden');
+    markActiveHistoryRow();
+    setStatus(`Opened saved run: ${(run.rows || []).length} rows across ${latestReportData.allDrivers.length} drivers.`, 'success');
+    runBanner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (error) {
+    setStatus(`Could not open saved run: ${error.message}`, 'error');
+  }
+}
+
+async function deleteSavedRun(run) {
+  if (!window.confirm(`Delete the saved run from ${formatDateTime(run.createdAt)}? This cannot be undone.`)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/history/${encodeURIComponent(run.id)}`, { method: 'DELETE' });
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Could not delete the saved run.');
+    }
+
+    if (viewingRunId === run.id) {
+      clearResults();
+      setStatus('Saved run deleted.', 'neutral');
+    }
+    await loadHistory();
+  } catch (error) {
+    setStatus(`Delete failed: ${error.message}`, 'error');
+  }
+}
+
+runBannerClose.addEventListener('click', () => {
+  clearResults();
+  setStatus('', 'neutral');
+});
+
 loadZelleDrivers();
 clearResults();
+restoreRememberedRange();
+updatePresetState();
+loadWorkbookStatus();
+loadHistory();

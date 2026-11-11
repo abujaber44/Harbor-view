@@ -4,23 +4,52 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zelle Drivers | Harbor View Payroll</title>
-  <link rel="stylesheet" href="/styles.css?v=20260415c" />
+  <link rel="stylesheet" href="/styles.css?v=20261110d" />
 </head>
 <body>
+  <header class="topnav">
+    <div class="topnav-inner">
+      <a class="topnav-brand" href="/">Harbor View Payroll</a>
+      <nav class="topnav-links" aria-label="Main">
+        <a href="/">Payroll</a>
+        <a href="/driver-ntd-summary">Settlement Pass</a>
+        <a href="/driver-lookup">Driver Lookup</a>
+        <a href="/zelle" aria-current="page">Zelle Drivers</a>
+      </nav>
+    </div>
+  </header>
+
   <main class="page">
     <section class="panel panel-hero">
       <h1>Zelle Drivers</h1>
       <p class="subtext">Maintain the driver list used for Zelle tags, Zelle reporting, and cash-to-keep.</p>
-      <div class="page-links">
-        <a class="link-chip" href="/">Back To Payroll</a>
-        <a class="link-chip" href="/driver-ntd-summary">Settlement Pass</a>
-      </div>
 
       <form id="zelle-form" class="stack-form">
-        <label for="zelle-drivers-input">Driver Names (one per line)</label>
-        <textarea id="zelle-drivers-input" rows="16" placeholder="Driver One&#10;Driver Two"></textarea>
+        <div class="table-tools">
+          <input id="zelle-search" type="search" placeholder="Search drivers" aria-label="Search drivers" />
+          <span id="zelle-count" class="subtext inline"></span>
+        </div>
+
+        <fieldset class="check-group">
+          <legend>Drivers in the current workbook</legend>
+          <p id="zelle-workbook-note" class="empty-note hidden"></p>
+          <div id="zelle-workbook-list" class="check-list"></div>
+        </fieldset>
+
+        <fieldset class="check-group check-group-warn hidden" id="zelle-other-group">
+          <legend>Saved names not in the current workbook</legend>
+          <p class="subtext">These may be drivers who did not work this week, or misspelled names. Untick any that should be removed.</p>
+          <div id="zelle-other-list" class="check-list"></div>
+        </fieldset>
+
+        <div class="add-row">
+          <input id="zelle-add-input" type="text" placeholder="Add a name that is not listed" aria-label="Add a driver name" />
+          <button id="zelle-add-btn" type="button" class="secondary">Add</button>
+        </div>
+
         <div class="action-row">
           <button id="save-zelle-btn" type="submit">Save Zelle Drivers</button>
+          <span id="zelle-dirty" class="subtext inline"></span>
         </div>
       </form>
 
@@ -28,6 +57,6 @@
     </section>
   </main>
 
-  <script src="/zelle.js?v=20260415a"></script>
+  <script src="/zelle.js?v=20261110d"></script>
 </body>
 </html>
