@@ -19,7 +19,8 @@ const CELL_CONFIG = Object.freeze({
   driverCol: 3, // Column C
   includeFlagCol: 4, // Column D
   ntdCol: 12, // Column L
-  cashInOutCol: 13 // Column M
+  cashInOutCol: 13, // Column M
+  adjCol: 14 // Column N
 });
 
 function normalizeMoneyValue(value) {
@@ -59,7 +60,9 @@ function roundBalanceByRule(value) {
   return sign * roundedAbsolute;
 }
 
-function buildSettlementNote(days, totals) {
+// usedByAdjustments: driver cash (negative cash rows) that column N shows was already used
+// to cover shortages. Settlement Pass skips that cash, so the note must too.
+function buildSettlementNote(days, totals, usedByAdjustments = 0) {
   const owedByNegativeNtd = days.reduce((sum, day) => (
     day.ntd < 0 ? sum + Math.abs(day.ntd) : sum
   ), 0);
@@ -67,11 +70,21 @@ function buildSettlementNote(days, totals) {
     day.cashInOut < 0 ? sum + Math.abs(day.cashInOut) : sum
   ), 0);
   const owedToDriverRaw = Math.max(owedByNegativeNtd, owedByNegativeCash);
-  const owedToDriverRounded = Math.abs(roundBalanceByRule(owedToDriverRaw));
+  const owedBeforeUse = Math.abs(roundBalanceByRule(owedToDriverRaw));
+  const owedToDriverRounded = Math.max(0, owedBeforeUse - usedByAdjustments);
   const driverOwesUsRounded = totals.balance < 0 ? Math.abs(totals.balance) : 0;
 
-  if (owedToDriverRounded <= 0 || driverOwesUsRounded <= 0) {
+  if (owedBeforeUse <= 0 || driverOwesUsRounded <= 0) {
     return null;
+  }
+
+  if (owedToDriverRounded <= 0) {
+    return {
+      owedToDriver: 0,
+      driverOwesUs: driverOwesUsRounded,
+      stillCollect: driverOwesUsRounded,
+      message: `The driver's cash was already used to cover shortages. The driver owes ${driverOwesUsRounded.toFixed(2)} and has no unused cash left, so we still need to collect ${driverOwesUsRounded.toFixed(2)}.`
+    };
   }
 
   if (driverOwesUsRounded > owedToDriverRounded) {
@@ -127,7 +140,8 @@ function ensureDriverSummary(map, displayName, normalizedName) {
 
   map[normalizedName] = {
     driver: displayName,
-    daysByName: dayMap
+    daysByName: dayMap,
+    usedByAdjustments: 0
   };
   return map[normalizedName];
 }
@@ -188,6 +202,10 @@ function summarizeDriversNtdBalance({ workbookPath, driver }) {
           String(rawDriver || '').trim().replace(/\s+/g, ' '),
           rowDriver
         );
+        if (cashInOut < 0) {
+          const usedAdj = Math.max(0, -normalizeMoneyValue(getCellValue(sheet, CELL_CONFIG.adjCol, row)));
+          summary.usedByAdjustments += Math.min(Math.abs(cashInOut), usedAdj);
+        }
         const dayBucket = summary.daysByName[dayConfig.day];
         dayBucket.ntd += ntd;
         dayBucket.cashInOut += cashInOut;
@@ -220,7 +238,7 @@ function summarizeDriversNtdBalance({ workbookPath, driver }) {
         },
         { ntd: 0, cashInOut: 0, balance: 0 }
       );
-      const settlementNote = buildSettlementNote(days, totals);
+      const settlementNote = buildSettlementNote(days, totals, summary.usedByAdjustments);
 
       return {
         driver: summary.driver,

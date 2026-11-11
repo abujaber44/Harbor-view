@@ -16,6 +16,7 @@ function buildSheet(entries = []) {
     rows[row][3] = entry.includeFlag; // Column D
     rows[row][11] = entry.ntd; // Column L
     rows[row][12] = entry.cashInOut; // Column M
+    rows[row][13] = entry.adj ?? null; // Column N
   });
 
   return xlsx.utils.aoa_to_sheet(rows);
@@ -238,6 +239,68 @@ test('summarizeDriversNtdBalance note can derive "we owe" from negative cash in/
   assert.equal(summary.settlementNote.owedToDriver, 10);
   assert.equal(summary.settlementNote.driverOwesUs, 80);
   assert.equal(summary.settlementNote.stillCollect, 70);
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test('settlement note ignores driver cash that column N shows was already used', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'harbor-view-ntd-'));
+  const workbookPath = path.join(tmpDir, 'Daily Sheet.xlsx');
+  const empty = [];
+
+  createWorkbook(workbookPath, {
+    'Mon AM': [{ row: 4, driver: 'Hamdy', includeFlag: 'x', ntd: 19.35, cashInOut: 19, adj: 0 }],
+    'Mon PM': [],
+    // Owed 49 and 2, both already used for shortages (N negative).
+    'Tues AM': [{ row: 4, driver: 'Hamdy', includeFlag: 'x', ntd: -49.2, cashInOut: -49, adj: -49 }],
+    'Tues PM': [],
+    'Wed AM': [{ row: 4, driver: 'Hamdy', includeFlag: 'x', ntd: 50.95, cashInOut: 32, adj: 19 }],
+    'Wed PM': [],
+    'Thurs AM': [{ row: 4, driver: 'Hamdy', includeFlag: 'x', ntd: 95, cashInOut: 0, adj: 95 }],
+    'Thurs PM': [],
+    'Fri AM': [{ row: 4, driver: 'Hamdy', includeFlag: 'x', ntd: -2, cashInOut: -2, adj: -2 }],
+    'Fri PM': empty,
+    'Sat AM': empty,
+    'Sat PM': empty,
+    'Sun AM': empty,
+    'Sun PM': empty
+  });
+
+  const result = summarizeDriversNtdBalance({ workbookPath, driver: 'Hamdy' });
+  const note = result.drivers[0].settlementNote;
+  assert.equal(note.owedToDriver, 0);
+  assert.equal(note.driverOwesUs, 114);
+  assert.equal(note.stillCollect, 114);
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test('settlement note still counts unused driver cash when column N is empty', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'harbor-view-ntd-'));
+  const workbookPath = path.join(tmpDir, 'Daily Sheet.xlsx');
+  const empty = [];
+
+  createWorkbook(workbookPath, {
+    'Mon AM': [{ row: 4, driver: 'Sam', includeFlag: 'x', ntd: 100, cashInOut: 0 }],
+    'Mon PM': empty,
+    'Tues AM': [{ row: 4, driver: 'Sam', includeFlag: 'x', ntd: -30, cashInOut: -30 }],
+    'Tues PM': empty,
+    'Wed AM': empty,
+    'Wed PM': empty,
+    'Thurs AM': empty,
+    'Thurs PM': empty,
+    'Fri AM': empty,
+    'Fri PM': empty,
+    'Sat AM': empty,
+    'Sat PM': empty,
+    'Sun AM': empty,
+    'Sun PM': empty
+  });
+
+  const note = summarizeDriversNtdBalance({ workbookPath, driver: 'Sam' }).drivers[0].settlementNote;
+  assert.equal(note.owedToDriver, 30);
+  assert.equal(note.driverOwesUs, 100);
+  assert.equal(note.stillCollect, 70);
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
