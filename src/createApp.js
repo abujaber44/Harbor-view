@@ -12,6 +12,8 @@ const {
   createWorkbookUploadHandler,
   workbookUploadErrorHandler
 } = require('./routes/workbookRoute');
+const { createWorkbookChecksHandler, createDriverNtdHandler } = require('./routes/workbookChecksRoute');
+const { createPayrollExportHandler } = require('./routes/payrollExportRoute');
 const {
   createBackupListHandler,
   createBackupDiffHandler,
@@ -55,6 +57,9 @@ function createApp({ runtime }) {
   );
 
   app.get('/api/workbook/drivers', createWorkbookDriversHandler());
+  app.get('/api/workbook/checks', createWorkbookChecksHandler());
+  app.get('/api/driver-ntd', createDriverNtdHandler());
+  app.get('/api/reports/payroll-export', createPayrollExportHandler());
 
   app.get('/api/backups', createBackupListHandler());
   app.get('/api/backups/:name/diff', createBackupDiffHandler());
@@ -70,6 +75,10 @@ function createApp({ runtime }) {
 
   app.get('/zelle', (_req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'zelle.html'));
+  });
+
+  app.get('/driver-lookup', (_req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'driver-lookup.html'));
   });
 
   app.get('/driver-ntd-summary', (_req, res) => {

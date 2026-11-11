@@ -334,3 +334,162 @@ test('backup routes reject unsafe or unknown names', async (t) => {
   assert.deepEqual(fs.readFileSync(ctx.workbookPath), before);
   assert.equal(fs.existsSync(ctx.backupDir), false);
 });
+
+function buildCheckWorkbookBuffer(sheets) {
+  const workbook = xlsx.utils.book_new();
+  Object.entries(sheets).forEach(([sheetName, entries]) => {
+    const rows = Array.from({ length: 50 }, () => Array(15).fill(null));
+    entries.forEach((entry) => {
+      const row = entry.row - 1;
+      rows[row][2] = entry.driver ?? null;
+      rows[row][3] = entry.flag ?? null;
+      rows[row][11] = entry.ntd ?? null;
+      rows[row][12] = entry.cash ?? null;
+      rows[row][13] = entry.adj ?? null;
+    });
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.aoa_to_sheet(rows), sheetName);
+  });
+  return xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+}
+
+test('workbook checks report data payroll would skip or misread', async (t) => {
+  const ctx = await startApp(t);
+
+  const missing = await fetch(`${ctx.baseUrl}/api/workbook/checks`);
+  assert.equal(missing.status, 422);
+  assert.equal((await missing.json()).code, 'WORKBOOK_MISSING');
+
+  fs.writeFileSync(ctx.workbookPath, buildCheckWorkbookBuffer({
+    'Mon AM': [
+      { row: 4, driver: 'Saddiki 445', cash: -50 },
+      { row: 5, driver: 'Sadiki 445', cash: -20 },
+      { row: 6, driver: 'Nasser 109', cash: -10 },
+      { row: 7, driver: 'Nasser 277', cash: -10 },
+      { row: 8, cash: -75 },
+      { row: 9, driver: 'Amy Long', cash: 'fifty', adj: 'n/a' },
+      { row: 10, driver: 'amy  long', cash: 30 }
+    ],
+    'Mon PM': [{ row: 4, driver: 'Amy Long', cash: -5 }],
+    'Tues AM': [{ row: 4, driver: 'Bob', cash: 'oops' }]
+  }));
+
+  const response = await fetch(`${ctx.baseUrl}/api/workbook/checks?fromDay=Monday&toDay=Monday`);
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.sheetsChecked, 2);
+  assert.equal(body.errorCount, 0);
+  assert.deepEqual(
+    body.issues.map((issue) => issue.type).sort(),
+    ['ADJ_IS_TEXT', 'AMOUNT_IS_TEXT', 'AMOUNT_WITHOUT_DRIVER', 'NAME_SIMILAR', 'NAME_VARIANTS']
+  );
+  const similar = body.issues.find((issue) => issue.type === 'NAME_SIMILAR');
+  assert.match(similar.message, /Saddiki 445.*Sadiki 445/);
+  const noDriver = body.issues.find((issue) => issue.type === 'AMOUNT_WITHOUT_DRIVER');
+  assert.equal(noDriver.row, 8);
+  assert.match(noDriver.message, /\$75\.00/);
+
+  // A wider range reaches sheets that are missing from this workbook.
+  const week = await (await fetch(`${ctx.baseUrl}/api/workbook/checks`)).json();
+  assert.equal(week.sheetsChecked, 14);
+  assert.equal(week.errorCount, 11);
+  assert.equal(week.issues[0].type, 'SHEET_MISSING');
+  assert.ok(week.issues.some((issue) => issue.type === 'AMOUNT_IS_TEXT' && issue.sheetName === 'Tues AM'));
+
+  const badRange = await fetch(`${ctx.baseUrl}/api/workbook/checks?fromDay=Friday&toDay=Monday`);
+  assert.equal(badRange.status, 400);
+
+  // Formulas saved without a calculated result are reported once, not per row.
+  const formulaWorkbook = xlsx.utils.book_new();
+  const formulaSheet = xlsx.utils.aoa_to_sheet([[null]]);
+  formulaSheet.C4 = { t: 's', v: 'Amy Long' };
+  formulaSheet.L4 = { t: 'z', f: 'E4+F4' };
+  formulaSheet.M4 = { t: 'n', v: -40 };
+  formulaSheet.C5 = { t: 's', v: 'Bob' };
+  formulaSheet.L5 = { t: 'n', v: 12, f: 'E5+F5' };
+  formulaSheet.M5 = { t: 'z', f: 'L5-D5' };
+  formulaSheet['!ref'] = 'A1:O47';
+  xlsx.utils.book_append_sheet(formulaWorkbook, formulaSheet, 'Mon AM');
+  xlsx.utils.book_append_sheet(formulaWorkbook, xlsx.utils.aoa_to_sheet([[null]]), 'Mon PM');
+  fs.writeFileSync(ctx.workbookPath, xlsx.write(formulaWorkbook, { type: 'buffer', bookType: 'xlsx', sheetStubs: true }));
+
+  const formulas = await (await fetch(`${ctx.baseUrl}/api/workbook/checks?fromDay=Monday&toDay=Monday`)).json();
+  assert.deepEqual(
+    formulas.issues.map((issue) => issue.type).sort(),
+    ['FORMULAS_NOT_CALCULATED', 'NTD_NOT_CALCULATED']
+  );
+  assert.match(formulas.issues.find((issue) => issue.type === 'NTD_NOT_CALCULATED').message, /^1 NTD formula/);
+});
+
+test('driver lookup endpoint returns the weekly NTD summary', async (t) => {
+  const ctx = await startApp(t);
+  const sheets = {};
+  ['Mon', 'Tues', 'Wed', 'Thurs', 'Fri', 'Sat', 'Sun'].forEach((day) => {
+    sheets[`${day} AM`] = [];
+    sheets[`${day} PM`] = [];
+  });
+  sheets['Mon AM'] = [
+    { row: 4, driver: 'Amy Long', flag: 'x', ntd: 100, cash: 60 },
+    { row: 5, driver: 'Bob', flag: 'x', ntd: 20, cash: 20 }
+  ];
+  sheets['Tues PM'] = [{ row: 4, driver: 'Amy Long', flag: 'x', ntd: 10, cash: 30 }];
+  fs.writeFileSync(ctx.workbookPath, buildCheckWorkbookBuffer(sheets));
+
+  const all = await (await fetch(`${ctx.baseUrl}/api/driver-ntd`)).json();
+  assert.equal(all.ok, true);
+  assert.deepEqual(all.drivers.map((driver) => driver.driver), ['Amy Long', 'Bob']);
+
+  const one = await (await fetch(`${ctx.baseUrl}/api/driver-ntd?driver=amy`)).json();
+  assert.equal(one.drivers.length, 1);
+  assert.equal(one.drivers[0].totals.ntd, 110);
+  assert.equal(one.drivers[0].totals.cashInOut, 90);
+  assert.equal(one.drivers[0].totals.balance, -20);
+  assert.equal(one.drivers[0].days[0].balance, -40);
+});
+
+test('payroll export returns summary, drivers, and daily rows for a saved run', async (t) => {
+  const ctx = await startApp(t);
+  const { saveRun } = require('../../src/services/historyStore');
+  const run = await saveRun(ctx.historyDir, {
+    range: { fromDay: 'Monday', toDay: 'Tuesday' },
+    rows: [
+      { Day: '03/23', Driver: 'Driver One', Amount: 200, Adj: 0, Notes: '' },
+      { Day: '03/24', Driver: 'Driver Two', Amount: 160, Adj: -10, Notes: 'Late' }
+    ],
+    groupedTotals: [
+      { name: 'Driver One', totalAmount: 200, pay: [{ day: '03/23', amount: 200, adj: 0, notes: '' }] },
+      { name: 'Driver Two', totalAmount: 150, pay: [{ day: '03/24', amount: 160, adj: -10, notes: 'Late' }] }
+    ],
+    zelleDrivers: ['Driver Two'],
+    cashSummary: { weeklyGrossM41: 1000, zelleTotal: 150, cashToKeep: 1150 }
+  });
+
+  const response = await fetch(`${ctx.baseUrl}/api/reports/payroll-export?runId=${run.id}`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-disposition'), new RegExp(`payroll-report-${run.id}\\.xlsx`));
+
+  const workbook = xlsx.read(Buffer.from(await response.arrayBuffer()), { type: 'buffer' });
+  assert.deepEqual(workbook.SheetNames, ['Summary', 'Drivers', 'Daily Rows']);
+
+  const summary = Object.fromEntries(
+    xlsx.utils.sheet_to_json(workbook.Sheets.Summary).map((row) => [row.Item, row.Value])
+  );
+  assert.equal(summary.Range, 'Monday to Tuesday');
+  assert.equal(summary['Total payout'], 350);
+  assert.equal(summary['Cash drivers total'], 200);
+  assert.equal(summary['Zelle drivers total'], 150);
+  assert.equal(summary['Cash to keep'], 1150);
+
+  const drivers = xlsx.utils.sheet_to_json(workbook.Sheets.Drivers);
+  assert.deepEqual(
+    drivers.map((row) => [row.Driver, row.Type, row['Total Amount']]),
+    [['Driver One', 'Cash', 200], ['Driver Two', 'Zelle', 150], ['TOTAL', '', 350]]
+  );
+  assert.equal(xlsx.utils.sheet_to_json(workbook.Sheets['Daily Rows']).length, 2);
+
+  // Without a run id the export reads the latest output workbook, which does not exist here.
+  const noOutput = await fetch(`${ctx.baseUrl}/api/reports/payroll-export`);
+  assert.equal(noOutput.status, 422);
+  const badId = await fetch(`${ctx.baseUrl}/api/reports/payroll-export?runId=nope`);
+  assert.equal(badId.status, 400);
+});

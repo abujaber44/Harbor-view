@@ -977,6 +977,149 @@ th.number {
   font-size: 14px;
 }
 
+/* ---- Range presets, checks, busy state ---- */
+
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.preset-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+button.chip {
+  background: #f8fbff;
+  color: #1e293b;
+  border: 1px solid #c7d2e0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+button.chip:hover:enabled {
+  background: #eef6ff;
+  box-shadow: none;
+}
+
+button.chip.is-active {
+  background: #dff0ea;
+  border-color: #9fc8bb;
+  color: var(--accent-dark);
+}
+
+.fold.hidden {
+  display: none;
+}
+
+.fold.checks.has-warnings {
+  border-color: #f3d08f;
+  background: #fffaf0;
+}
+
+.fold.checks.has-errors {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.checks-list {
+  margin: 0;
+  padding: 0 14px 12px 32px;
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  color: #334155;
+}
+
+.checks-list .check-warning {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.checks-list .check-error {
+  color: var(--error);
+  font-weight: 700;
+}
+
+button.is-busy {
+  position: relative;
+  padding-left: 34px;
+}
+
+button.is-busy::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.is-busy::before {
+    animation-duration: 2s;
+  }
+}
+
+/* ---- Driver lookup ---- */
+
+.lookup-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.lookup-form input {
+  flex: 1 1 240px;
+  min-width: 0;
+  max-width: 420px;
+}
+
+.driver-summary-card .table-wrap {
+  border-radius: 10px;
+}
+
+.driver-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.driver-summary-head h3 {
+  margin: 0;
+}
+
+td.number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+td.negative {
+  color: var(--error);
+  font-weight: 700;
+}
+
 .status:empty {
   display: none;
 }
@@ -1190,6 +1333,37 @@ tbody tr:nth-child(even) {
 }
 
 @media (max-width: 520px) {
+  .panel {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  h2 {
+    font-size: 18px;
+  }
+
+  .topnav-links a {
+    padding: 6px 9px;
+    font-size: 13px;
+  }
+
+  .stepper li {
+    padding: 6px 8px;
+    font-size: 12.5px;
+    gap: 6px;
+  }
+
+  .action-wrap button,
+  .table-tools input[type="search"] {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  th,
+  td {
+    padding: 7px 8px;
+  }
+
   .workbook-facts {
     grid-template-columns: 1fr;
   }

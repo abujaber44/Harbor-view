@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Harbor View Payroll</title>
-  <link rel="stylesheet" href="/styles.css?v=20261110c" />
+  <link rel="stylesheet" href="/styles.css?v=20261110d" />
 </head>
 <body>
   <header class="topnav">
@@ -13,6 +13,7 @@
       <nav class="topnav-links" aria-label="Main">
         <a href="/" aria-current="page">Payroll</a>
         <a href="/driver-ntd-summary">Settlement Pass</a>
+        <a href="/driver-lookup">Driver Lookup</a>
         <a href="/zelle">Zelle Drivers</a>
       </nav>
     </div>
@@ -51,6 +52,12 @@
       <div class="panel-head">
         <h2><span class="step-tag">2</span>Run payroll</h2>
       </div>
+      <div class="preset-row" id="range-presets" role="group" aria-label="Quick day ranges">
+        <span class="preset-label">Quick range</span>
+        <button type="button" class="chip" data-from="Monday" data-to="Friday">Mon – Fri</button>
+        <button type="button" class="chip" data-from="Monday" data-to="Sunday">Full week</button>
+        <button type="button" class="chip" data-from="Saturday" data-to="Sunday">Weekend</button>
+      </div>
       <form id="payroll-form" class="form-grid">
         <label>
           From Day
@@ -82,11 +89,17 @@
 
         <div class="action-stack">
           <button id="submit-btn" type="submit">Run Payroll</button>
+          <button id="check-btn" type="button" class="secondary">Check Workbook</button>
         </div>
       </form>
 
       <div id="status" class="status" role="status" aria-live="polite"></div>
       <ul id="warnings" class="warnings"></ul>
+
+      <details id="checks-panel" class="fold checks hidden">
+        <summary id="checks-summary">Workbook checks</summary>
+        <ul id="checks-list" class="checks-list"></ul>
+      </details>
     </section>
 
     <section class="panel run-banner hidden" id="run-banner">
@@ -126,6 +139,7 @@
         <button id="cash-slips-btn" type="button" class="secondary" disabled>Generate Cash Driver Slips</button>
         <button id="zelle-overview-btn" type="button" class="secondary" disabled>Show Zelle Overview</button>
         <button id="zelle-export-btn" type="button" class="secondary" disabled>Export Zelle Excel</button>
+        <button id="payroll-export-btn" type="button" class="secondary" disabled>Export Payroll Excel</button>
         <button id="cash-keep-btn" type="button" class="secondary" disabled>Generate Cash To Keep</button>
       </div>
     </section>
@@ -213,6 +227,6 @@
     </section>
   </main>
 
-  <script src="/app.js?v=20261110c"></script>
+  <script src="/app.js?v=20261110d"></script>
 </body>
 </html>

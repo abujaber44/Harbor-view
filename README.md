@@ -71,7 +71,8 @@ Open: [http://localhost:3004](http://localhost:3004)
 
 - `/` Payroll home
 - `/zelle` Manage Zelle driver list
-- `/driver-ntd-summary` Settlement Pass preview/apply workflow
+- `/driver-ntd-summary` Settlement Pass preview/apply workflow, plus workbook backups (compare and restore)
+- `/driver-lookup` One driver's week: NTD, cash in/out, balance per day
 
 ## API Endpoints
 
@@ -158,6 +159,18 @@ Replaces the workbook. Send the `.xlsx` file as the raw request body with `Conte
 ### `GET /api/workbook/drivers`
 
 Returns the distinct driver names found in column `C` (rows `4..47`) of the day sheets. The Zelle page uses it to show a checklist instead of free text.
+
+### `GET /api/workbook/checks`
+
+Read-only checks for the selected range (`?fromDay=&toDay=`, default whole week). Reports missing day sheets, cash in/out or adjustment cells that contain text, payouts with no driver name, driver names that look like the same person spelled two ways, and formulas that have no calculated value. It never changes the workbook or blocks a run.
+
+### `GET /api/driver-ntd`
+
+Returns each driver's week (NTD, cash in/out, balance per day). `?driver=` filters by name (case-insensitive contains). Used by the Driver Lookup page.
+
+### `GET /api/reports/payroll-export`
+
+Downloads the full payroll report as Excel with three sheets: `Summary`, `Drivers`, `Daily Rows`. Add `?runId=<id>` to export a saved run.
 
 ### `GET /api/backups`, `GET /api/backups/:name/diff`, `POST /api/backups/:name/restore`
 

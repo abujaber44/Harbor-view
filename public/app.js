@@ -10,6 +10,14 @@ const cashSlipsButton = document.getElementById('cash-slips-btn');
 const zelleOverviewButton = document.getElementById('zelle-overview-btn');
 const zelleExportButton = document.getElementById('zelle-export-btn');
 const cashKeepButton = document.getElementById('cash-keep-btn');
+const payrollExportButton = document.getElementById('payroll-export-btn');
+const checkButton = document.getElementById('check-btn');
+const checksPanel = document.getElementById('checks-panel');
+const checksSummary = document.getElementById('checks-summary');
+const checksList = document.getElementById('checks-list');
+const fromDaySelect = document.getElementById('fromDay');
+const toDaySelect = document.getElementById('toDay');
+const presetButtons = Array.from(document.querySelectorAll('#range-presets button'));
 
 const reportPreview = document.getElementById('report-preview');
 const reportTitle = document.getElementById('report-title');
@@ -673,6 +681,7 @@ function updateReportButtonState() {
   zelleOverviewButton.disabled = !hasRun || zelleCount === 0;
   zelleExportButton.disabled = !hasRun || zelleCount === 0;
   cashKeepButton.disabled = !hasRun || !latestReportData.cashSummary;
+  payrollExportButton.disabled = !hasRun || allCount === 0;
 }
 
 function applyReportData(data) {
@@ -739,7 +748,10 @@ form.addEventListener('submit', async (event) => {
   };
 
   submitButton.disabled = true;
+  submitButton.classList.add('is-busy');
   setStatus('Running payroll...', 'neutral');
+  rememberRange(payload.fromDay, payload.toDay);
+  runWorkbookChecks(payload.fromDay, payload.toDay);
 
   try {
     const response = await fetch('/submit', {
@@ -776,6 +788,7 @@ form.addEventListener('submit', async (event) => {
     setStatus(`Request failed: ${error.message}`, 'error');
   } finally {
     submitButton.disabled = false;
+    submitButton.classList.remove('is-busy');
   }
 });
 
@@ -853,6 +866,50 @@ zelleExportButton.addEventListener('click', async () => {
   }
 });
 
+payrollExportButton.addEventListener('click', async () => {
+  setStatus('Generating payroll Excel export...', 'neutral');
+  payrollExportButton.disabled = true;
+  payrollExportButton.classList.add('is-busy');
+
+  try {
+    const exportUrl = viewingRunId
+      ? `/api/reports/payroll-export?runId=${encodeURIComponent(viewingRunId)}`
+      : '/api/reports/payroll-export';
+    const response = await fetch(exportUrl);
+    if (!response.ok) {
+      let errorMessage = 'Could not export payroll report.';
+      try {
+        const data = await response.json();
+        errorMessage = `${data.message || errorMessage} (${data.code || 'UNKNOWN'})`;
+      } catch (_error) {
+        // Keep the generic message.
+      }
+      throw new Error(errorMessage);
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="([^"]+)"/i);
+    const fileName = match ? match[1] : 'payroll-report.xlsx';
+
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+
+    setStatus(`Payroll report exported: ${fileName}`, 'success');
+  } catch (error) {
+    setStatus(`Payroll export failed: ${error.message}`, 'error');
+  } finally {
+    payrollExportButton.classList.remove('is-busy');
+    updateReportButtonState();
+  }
+});
+
 cashKeepButton.addEventListener('click', () => {
   if (!latestReportData.cashSummary) {
     setStatus('Cash-to-keep summary is not available yet.', 'error');
@@ -861,6 +918,127 @@ cashKeepButton.addEventListener('click', () => {
 
   renderCashToKeepReport();
   setStatus('Generating cash-to-keep report...', 'success');
+});
+
+// ---- Day range presets and remembered range ----
+
+const RANGE_STORAGE_KEY = 'harborView.lastRange';
+
+function rememberRange(fromDay, toDay) {
+  try {
+    localStorage.setItem(RANGE_STORAGE_KEY, JSON.stringify({ fromDay, toDay }));
+  } catch (_error) {
+    // Storage can be unavailable (private windows); the range is simply not remembered.
+  }
+}
+
+function hasOption(select, value) {
+  return Array.from(select.options).some((option) => option.value === value && value !== '');
+}
+
+function setRange(fromDay, toDay) {
+  if (hasOption(fromDaySelect, fromDay) && hasOption(toDaySelect, toDay)) {
+    fromDaySelect.value = fromDay;
+    toDaySelect.value = toDay;
+  }
+  updatePresetState();
+}
+
+function updatePresetState() {
+  presetButtons.forEach((button) => {
+    const active = button.dataset.from === fromDaySelect.value && button.dataset.to === toDaySelect.value;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function restoreRememberedRange() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RANGE_STORAGE_KEY) || 'null');
+    if (saved) {
+      setRange(saved.fromDay, saved.toDay);
+    }
+  } catch (_error) {
+    // Ignore unreadable saved values.
+  }
+}
+
+presetButtons.forEach((button) => {
+  button.addEventListener('click', () => setRange(button.dataset.from, button.dataset.to));
+});
+fromDaySelect.addEventListener('change', updatePresetState);
+toDaySelect.addEventListener('change', updatePresetState);
+
+// ---- Workbook checks (read-only; never block a run) ----
+
+function renderChecks(result) {
+  checksList.innerHTML = '';
+  checksPanel.classList.remove('hidden');
+
+  const range = `${result.fromDay} to ${result.toDay}`;
+  const total = result.errorCount + result.warningCount;
+  checksPanel.classList.toggle('has-errors', result.errorCount > 0);
+  checksPanel.classList.toggle('has-warnings', result.errorCount === 0 && result.warningCount > 0);
+
+  if (total === 0) {
+    checksSummary.textContent = `Workbook checks: no problems found (${range}, ${result.driverCount} drivers)`;
+    checksPanel.open = false;
+    const item = document.createElement('li');
+    item.textContent = 'All day sheets are present, amounts are numbers, and no driver names look misspelled.';
+    checksList.appendChild(item);
+    return;
+  }
+
+  checksSummary.textContent = `Workbook checks: ${total} thing${total === 1 ? '' : 's'} to look at (${range})`;
+  checksPanel.open = true;
+  result.issues.forEach((issue) => {
+    const item = document.createElement('li');
+    item.className = `check-${issue.severity}`;
+    item.textContent = issue.message;
+    checksList.appendChild(item);
+  });
+  if (result.truncated) {
+    const item = document.createElement('li');
+    item.textContent = `Only the first ${result.issues.length} are shown.`;
+    checksList.appendChild(item);
+  }
+}
+
+async function runWorkbookChecks(fromDay, toDay) {
+  const params = new URLSearchParams();
+  if (fromDay && toDay) {
+    params.set('fromDay', fromDay);
+    params.set('toDay', toDay);
+  }
+
+  try {
+    const response = await fetch(`/api/workbook/checks?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'Could not check the workbook.');
+    }
+    renderChecks(data);
+    return true;
+  } catch (error) {
+    checksList.innerHTML = '';
+    checksPanel.classList.remove('hidden', 'has-warnings');
+    checksPanel.classList.add('has-errors');
+    checksPanel.open = true;
+    checksSummary.textContent = 'Workbook checks could not run';
+    const item = document.createElement('li');
+    item.className = 'check-error';
+    item.textContent = error.message;
+    checksList.appendChild(item);
+    return false;
+  }
+}
+
+checkButton.addEventListener('click', async () => {
+  checkButton.disabled = true;
+  checkButton.classList.add('is-busy');
+  await runWorkbookChecks(fromDaySelect.value, toDaySelect.value);
+  checkButton.disabled = false;
+  checkButton.classList.remove('is-busy');
 });
 
 // ---- Workbook status and upload ----
@@ -986,6 +1164,7 @@ async function uploadWorkbook(file) {
 
     clearResults();
     setStatus('', 'neutral');
+    checksPanel.classList.add('hidden');
     renderWorkbook(data.workbook);
     setWorkbookStatus(
       data.backupFile
@@ -1155,5 +1334,7 @@ runBannerClose.addEventListener('click', () => {
 
 loadZelleDrivers();
 clearResults();
+restoreRememberedRange();
+updatePresetState();
 loadWorkbookStatus();
 loadHistory();
